@@ -1,0 +1,43 @@
+# Project Intelligence
+
+This file captures important patterns, preferences, and project intelligence to help Cline work more effectively.
+
+## Memory Bank Usage
+
+### Encouraging Memory Bank Requests
+To encourage Cline to use the Memory Bank instead of external API requests, use the following patterns:
+
+1. **Use Memory Bank Keywords**:
+   - "According to productContext.md..."
+   - "Based on the systemPatterns.md structure..."
+   - "Following the techContext.md implementation..."
+   - "As documented in activeContext.md..."
+
+2. **Reference Specific Sections**:
+   - For architecture questions: "Looking at systemPatterns.md > Architecture"
+   - For implementation details: "Following techContext.md > Code Documentation"
+   - For current status: "Checking activeContext.md > Current Focus"
+
+3. **Use Documentation-First Approach**:
+   - "Please check the Memory Bank documentation first"
+   - "Can you reference the relevant Memory Bank section?"
+   - "Which Memory Bank file would contain this information?"
+
+### Example Requests:
+Instead of:
+❌ "How does the image processing work?"
+
+Use:
+✅ "According to techContext.md > Models > Image Processing, how is the resize operation implemented?"
+
+Instead of:
+❌ "What's the project structure?"
+
+Use:
+✅ "Can you reference the project structure from systemPatterns.md?"
+
+### Memory Bank Update Requests:
+When providing new information, explicitly request Memory Bank updates:
+- "Please update activeContext.md with this new information"
+- "This should be documented in techContext.md"
+- "Add this pattern to systemPatterns.md"
