@@ -1,70 +1,9 @@
 """Reusable widgets for LogoCraft."""
 from PySide6.QtWidgets import (
-    QWidget, QVBoxLayout, QCheckBox, QGroupBox, QScrollArea, QLabel, QMessageBox
+    QWidget, QVBoxLayout, QCheckBox, QGroupBox, QScrollArea, QMessageBox
 )
-from PySide6.QtCore import Qt, Signal
-from PySide6.QtGui import QPixmap, QImage, QDragEnterEvent, QDropEvent
-from PIL.ImageQt import ImageQt
-from PIL import Image
-from pathlib import Path
+from PySide6.QtCore import Signal
 from typing import Set
-
-class DropArea(QLabel):
-    """Widget that allows drag-and-drop of images."""
-    dropped = Signal(str)
-
-    def __init__(self):
-        super().__init__()
-        self.setAlignment(Qt.AlignCenter)
-        self.setText("Drop image here\nor click to browse")
-        self.setMinimumSize(250, 250)
-        self.setStyleSheet("""
-            QLabel {
-                border: 2px dashed #aaa;
-                border-radius: 5px;
-                background: #f5f5f5;
-                padding: 20px;
-            }
-            QLabel:hover {
-                background: #e5e5e5;
-                border-color: #999;
-            }
-        """)
-        self.setAcceptDrops(True)
-
-    def dragEnterEvent(self, event: QDragEnterEvent) -> None:
-        if event.mimeData().hasUrls():
-            event.acceptProposedAction()
-
-    def dropEvent(self, event: QDropEvent) -> None:
-        for url in event.mimeData().urls():
-            self.dropped.emit(url.toLocalFile())
-            break
-
-class PreviewArea(QWidget):
-    """Widget for displaying an image preview."""
-    def __init__(self):
-        super().__init__()
-        layout = QVBoxLayout(self)
-        self.preview = QLabel()
-        self.preview.setAlignment(Qt.AlignCenter)
-        self.preview.setMinimumSize(200, 200)
-        layout.addWidget(self.preview)
-
-    def update_preview(self, image_path: Path) -> None:
-        """Update the preview with the selected image."""
-        try:
-            with Image.open(image_path) as img:
-                img.thumbnail((200, 200))
-                qimage = ImageQt(img)
-                pixmap = QPixmap.fromImage(qimage)
-                self.preview.setPixmap(pixmap)
-        except Exception as e:
-            self.preview.setText(f"Preview failed: {str(e)}")
-
-    def clear(self) -> None:
-        """Clear the preview image."""
-        self.preview.clear()
 
 class FormatSelector(QWidget):
     """Widget to allow users to select output formats."""

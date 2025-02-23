@@ -19,6 +19,10 @@ logger = get_logger(__name__)
 class MainWindow(QMainWindow):
     """Main window for the LogoCraft application."""
     
+    # Default paths
+    DEFAULT_INPUT_PATH = r"C:\Users\Revadmin\Desktop\Logo.png"
+    DEFAULT_OUTPUT_PATH = r"C:\Users\Revadmin\Desktop\test_images"
+    
     # UI Settings
     WINDOW_TITLE = "HungerRush Utility - Image Processor"
     WINDOW_GEOMETRY = (200, 200, 500, 700)
@@ -50,6 +54,16 @@ class MainWindow(QMainWindow):
         self.current_file = None
         self.checkboxes = {}
         
+        # Create a drop label for handling drop messages
+        self.drop_label = QLabel("Drop image here or click Browse")
+        self.drop_label.setStyleSheet(
+            f"color: {self.COLORS['label_color']}; "
+            "border: 2px dashed #aaa; "
+            "border-radius: 5px; "
+            "padding: 10px; "
+            "text-align: center;"
+        )
+        
         # Set up UI
         self.setWindowTitle(self.WINDOW_TITLE)
         self.setGeometry(*self.WINDOW_GEOMETRY)
@@ -57,12 +71,18 @@ class MainWindow(QMainWindow):
         
         self.initUI()
         self._apply_theme()
+        
+        # Update drop label with default file
+        self._update_drop_label(self.DEFAULT_INPUT_PATH)
 
     def initUI(self):
         """Initialize the UI layout and components."""
         main_layout = QVBoxLayout()
         main_layout.setSpacing(20)
         main_layout.setContentsMargins(20, 20, 20, 20)
+
+        # Add drop label to layout
+        main_layout.addWidget(self.drop_label)
 
         # Create sections
         self._create_input_section(main_layout)
@@ -111,6 +131,7 @@ class MainWindow(QMainWindow):
         self.input_file_entry = QLineEdit()
         self.input_file_entry.setPlaceholderText("Select input image file...")
         self.input_file_entry.setReadOnly(True)
+        self.input_file_entry.setText(self.DEFAULT_INPUT_PATH)
         self.input_file_entry.setStyleSheet(self._get_input_style())
         input_layout.addWidget(self.input_file_entry)
 
@@ -131,6 +152,7 @@ class MainWindow(QMainWindow):
         self.output_dir_entry = QLineEdit()
         self.output_dir_entry.setPlaceholderText("Select output directory...")
         self.output_dir_entry.setReadOnly(True)
+        self.output_dir_entry.setText(self.DEFAULT_OUTPUT_PATH)
         self.output_dir_entry.setStyleSheet(self._get_input_style())
         output_layout.addWidget(self.output_dir_entry)
 
@@ -154,7 +176,8 @@ class MainWindow(QMainWindow):
         for i, (name, config) in enumerate(formats.items()):
             size = config["size"]
             checkbox = QCheckBox(f"{name} ({size[0]} × {size[1]} px)")
-            checkbox.setChecked(True)
+            # Only check the PUSH checkbox by default
+            checkbox.setChecked(name == "PUSH")
             checkbox.setStyleSheet(
                 f"QCheckBox {{"
                 f"    color: {self.COLORS['checkbox_color']};"
@@ -299,7 +322,14 @@ class MainWindow(QMainWindow):
     def _update_drop_label(self, file_path: str):
         """Update drop zone label with file name."""
         self.drop_label.setText(f"File loaded: {os.path.basename(file_path)}")
-        self.drop_label.setStyleSheet(f"color: {self.COLORS['label_color']}; font-weight: bold;")
+        self.drop_label.setStyleSheet(
+            f"color: {self.COLORS['label_color']}; "
+            "font-weight: bold; "
+            "border: 2px dashed #aaa; "
+            "border-radius: 5px; "
+            "padding: 10px; "
+            "text-align: center;"
+        )
 
     def dragEnterEvent(self, event: QDragEnterEvent):
         """Handle drag enter event."""

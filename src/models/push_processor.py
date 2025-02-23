@@ -1,151 +1,223 @@
-"""
-Enhanced Background Removal for Push Notifications
-"""
 from pathlib import Path
-import numpy as np
 import cv2
+import numpy as np
 from PIL import Image
-from rembg import remove
 import logging
-from .base import BaseImageProcessor
+from typing import Optional
 
-class PushProcessor(BaseImageProcessor):
-    """Advanced processor for push notification icons with background removal."""
+# 1. **Initial File Validation**
+FILE_VALIDATION = {
+    'max_file_size': 50 * 1024 * 1024,  # 50MB max size
+    'allowed_formats': {".png", ".jpg", ".jpeg", ".gif", ".bmp", ".tiff", ".jfif"},
+    'chunk_size': 1024 * 1024  # File reading buffer
+}
 
-    def __init__(self, method="auto"):
-        super().__init__()
-        self.method = method
+# 2. **Dimension Validation**
+DIMENSION_VALIDATION = {
+    'min_dimension': 90,
+    'max_dimension': 5000,
+    'push_min_size': (64, 64)
+}
 
-        # Edge detection parameters
-        self.edge_params = {
-            'gaussian_blur': (5, 5),
-            'canny_threshold1': 30,
-            'canny_threshold2': 100,
-            'dilate_iterations': 2,
-            'dilate_kernel': np.ones((3, 3), np.uint8)
-        }
+# 3. **Image Mode Conversion**
+MODE_SETTINGS = {
+    'target_mode': 'RGBA',
+    'alpha_handling': True
+}
 
-        # Color-based removal parameters
-        self.color_params = {
-            'tolerance': 30,  # Tolerance for background color
-            'min_size': 100   # Min connected component size
-        }
+# 4. **Initial Size Adjustment**
+INTERMEDIATE_RESIZE = {
+    'target_size': (192, 192),
+    'method': Image.LANCZOS
+}
 
-    def create_push_notification(self, input_path: Path, output_path: Path, size=None):
+# 5. **Channel Separation**
+CHANNEL_SETTINGS = {
+    'mode': 'RGBA',
+    'channels': ['r', 'g', 'b', 'a']
+}
+
+# 6. **Grayscale Conversion**
+GRAY_CONVERSION = {
+    'to_rgb': cv2.COLOR_RGBA2RGB,
+    'to_gray': cv2.COLOR_RGB2GRAY
+}
+
+# 7. **Contrast Analysis**
+CONTRAST_SETTINGS = {
+    'histogram_bins': 256,
+    'range': [0, 256],
+    'threshold': 0.5
+}
+
+# 8. **Blur Application**
+BLUR_SETTINGS = {
+    'kernel_size': (3, 3),
+    'sigma': {'high_contrast': 0.5, 'low_contrast': 1.0}
+}
+
+# 9. **Edge Detection**
+EDGE_SETTINGS = {
+    'low_threshold': {'high_contrast': 30, 'low_contrast': 20},
+    'high_threshold': {'high_contrast': 100, 'low_contrast': 90}
+}
+
+# 10. **Edge Dilation**
+DILATION_SETTINGS = {
+    'kernel_size': {'fine_text': (1, 1), 'normal': (2, 1)},
+    'iterations': 1
+}
+
+# 11. **Adaptive Thresholding**
+THRESHOLD_SETTINGS = {
+    'method': cv2.ADAPTIVE_THRESH_GAUSSIAN_C,
+    'type': cv2.THRESH_BINARY,
+    'block_size': {'high_contrast': 7, 'low_contrast': 11},
+    'C': 2
+}
+
+# 12. **Mask Combination**
+COMBINE_SETTINGS = {
+    'operation': cv2.bitwise_or,
+    'threshold': 0  # For combined > 0
+}
+
+# 13. **Transparency Mask Creation**
+MASK_SETTINGS = {
+    'content_color': [255, 255, 255, 255],
+    'background_color': [0, 0, 0, 0]
+}
+
+# 14. **Final Resize**
+FINAL_RESIZE = {
+    'target_size': (96, 96),
+    'method': Image.LANCZOS
+}
+
+# 15. **Output Format Preparation**
+FORMAT_SETTINGS = {
+    'mode': 'RGBA',
+    'background': (255, 255, 255, 0)
+}
+
+# 16. **File Saving**
+SAVE_SETTINGS = {
+    'format': 'PNG',
+    'optimize': True,
+    'quality': 95
+}
+
+
+class PushProcessor:
+    def __init__(self, logger: Optional[logging.Logger] = None):
+        self.logger = logger or logging.getLogger(__name__)
+
+    def validate_file(self, file_path: Path) -> bool:
+        if not file_path.exists():
+            raise ValueError(f"File not found: {file_path}")
+
+        if file_path.suffix.lower() not in FILE_VALIDATION['allowed_formats']:
+            raise ValueError(f"Unsupported format: {file_path.suffix}")
+
+        if file_path.stat().st_size > FILE_VALIDATION['max_file_size']:
+            raise ValueError(f"File too large: {file_path.stat().st_size / (1024 * 1024):.1f}MB")
+
+        return True
+
+    def validate_dimensions(self, image: Image.Image) -> bool:
+        width, height = image.size
+        if width < DIMENSION_VALIDATION['min_dimension'] or height < DIMENSION_VALIDATION['min_dimension']:
+            raise ValueError(f"Image too small: {width}x{height}")
+
+        if width > DIMENSION_VALIDATION['max_dimension'] or height > DIMENSION_VALIDATION['max_dimension']:
+            raise ValueError(f"Image too large: {width}x{height}")
+
+        return True
+
+    def calculate_contrast(self, image: np.ndarray) -> float:
+        gray = cv2.cvtColor(image, GRAY_CONVERSION['to_gray'])
+        hist = cv2.calcHist([gray], [0], None, [CONTRAST_SETTINGS['histogram_bins']], CONTRAST_SETTINGS['range'])
+        hist_norm = hist.ravel() / hist.sum()
+        contrast = np.sqrt(np.sum(hist_norm * (np.arange(256) - hist_norm.mean()) ** 2))
+        return contrast
+
+    def create_coloring_book_effect(self, img: Image.Image) -> Image.Image:
         """
-        Create a push notification icon with background removal.
-        
-        Args:
-            input_path (Path): Source image path
-            output_path (Path): Output image path
-            size (tuple): Optional custom size, defaults to FORMAT_CONFIGS["PUSH"]["size"]
+        Creates a bold black-and-white coloring book effect with a white background and strong edges.
         """
+        img_array = np.array(img)
+
+        # Extract alpha channel if present
+        alpha = img_array[:, :, 3] if img_array.shape[2] == 4 else np.ones(img_array.shape[:2], dtype=np.uint8) * 255
+
+        # Convert image to grayscale
+        img_array = cv2.cvtColor(img_array, GRAY_CONVERSION['to_rgb'])
+        gray = cv2.cvtColor(img_array, GRAY_CONVERSION['to_gray'])
+
+        # Calculate image contrast
+        contrast = self.calculate_contrast(img_array)
+        high_contrast = contrast > CONTRAST_SETTINGS['threshold']
+
+        # **1. Stronger Gaussian Blur to Reduce Noise**
+        sigma = BLUR_SETTINGS['sigma']['high_contrast'] if high_contrast else BLUR_SETTINGS['sigma']['low_contrast']
+        blurred = cv2.GaussianBlur(gray, BLUR_SETTINGS['kernel_size'], sigma)
+
+        # **2. Higher Edge Detection Thresholds**
+        thresholds = (
+            (50, 150) if high_contrast else (30, 100)
+        )
+        edges = cv2.Canny(blurred, *thresholds)
+
+        # **3. OTSU Threshold Instead of Adaptive**
+        _, thresh = cv2.threshold(blurred, 0, 255, cv2.THRESH_BINARY + cv2.THRESH_OTSU)
+
+        # **4. Combine Canny Edges with OTSU Threshold**
+        combined = cv2.bitwise_or(edges, thresh)
+
+        # **5. Invert the Image to Ensure White Background**
+        inverted = cv2.bitwise_not(combined)  # <-- Fix: Invert colors
+
+        # **6. Adaptive Dilation: Different Kernel for Bold and Fine Text**
+        fine_text_kernel = np.ones((1, 1), np.uint8)  # Small kernel for fine text
+        normal_text_kernel = np.ones((2, 2), np.uint8)  # Larger kernel for normal edges
+
+        # Apply **small dilation for fine text** to keep details
+        fine_text_dilated = cv2.dilate(inverted, fine_text_kernel, iterations=1)
+
+        # Apply **larger dilation for bold text**
+        normal_text_dilated = cv2.dilate(fine_text_dilated, normal_text_kernel, iterations=1)
+
+        # **7. Create White Background with Black Edges**
+        result = np.ones_like(img_array) * 255  # Set everything to white
+        mask = normal_text_dilated > 0
+        result[mask] = [0, 0, 0]  # Set edges to black
+
+        # **8. Apply Transparency Mask**
+        _, alpha_mask = cv2.threshold(alpha, 128, 255, cv2.THRESH_BINARY)
+        rgba_result = np.zeros((*result.shape[:2], 4), dtype=np.uint8)
+        rgba_result[:, :, :3] = result
+        rgba_result[:, :, 3] = alpha_mask
+
+        return Image.fromarray(rgba_result)
+
+    def create_push_notification(self, input_path: Path, output_path: Path) -> Path:
         try:
-            self.validate_input(input_path, output_path)
-            push_config = self.get_format_config("PUSH")
-            size = size or push_config["size"]
+            self.validate_file(input_path)
 
             with Image.open(input_path) as img:
-                img = self._preprocess_image(img)
+                img = img.convert(MODE_SETTINGS['target_mode'])
+                self.validate_dimensions(img)
 
-                # Apply background removal
-                if self.method == "auto":
-                    img = self._auto_remove_background(img)
-                elif self.method == "ai":
-                    img = self.make_transparent_ai(img)
-                elif self.method == "edge":
-                    img = self.make_transparent_edges(img)
-                elif self.method == "color":
-                    img = self.make_transparent_color(img)
-                elif self.method == "hybrid":
-                    img = self._hybrid_remove_background(img)
+                img = img.resize(INTERMEDIATE_RESIZE['target_size'], INTERMEDIATE_RESIZE['method'])
 
-                # Final processing & save
-                img = self._postprocess_image(img, size)
-                img.save(output_path, format="PNG", 
-                        optimize=push_config["optimize"],
-                        quality=push_config["quality"])
+                processed = self.create_coloring_book_effect(img)
+
+                final = processed.resize(FINAL_RESIZE['target_size'], FINAL_RESIZE['method'])
+
+                final.save(output_path, SAVE_SETTINGS['format'], optimize=SAVE_SETTINGS['optimize'])
+
+            return output_path
 
         except Exception as e:
-            self.logger.error(f"Error processing push notification: {str(e)}")
+            self.logger.error(f"Error processing push icon: {str(e)}")
             raise
-
-    def _preprocess_image(self, image):
-        """Prepares image by enhancing contrast & reducing noise."""
-        image = image.convert("RGBA")
-        cv_image = cv2.cvtColor(np.array(image), cv2.COLOR_RGBA2BGRA)
-
-        # Denoise while preserving edges
-        denoised = cv2.bilateralFilter(cv_image, 9, 75, 75)
-
-        # Enhance contrast
-        lab = cv2.cvtColor(denoised, cv2.COLOR_BGRA2LAB)
-        lab[:, :, 0] = cv2.createCLAHE(clipLimit=2.0, tileGridSize=(8, 8)).apply(lab[:, :, 0])
-        enhanced = cv2.cvtColor(lab, cv2.COLOR_LAB2BGRA)
-
-        return Image.fromarray(cv2.cvtColor(enhanced, cv2.COLOR_BGRA2RGBA))
-
-    def _auto_remove_background(self, image):
-        """Choose best method dynamically based on image complexity."""
-        cv_image = cv2.cvtColor(np.array(image), cv2.COLOR_RGBA2BGR)
-        gray = cv2.cvtColor(cv_image, cv2.COLOR_BGR2GRAY)
-
-        edges = cv2.Canny(gray, 100, 200)
-        edge_density = np.sum(edges > 0) / edges.size
-
-        try:
-            return self.make_transparent_ai(image) if edge_density > 0.1 else self.make_transparent_color(image)
-        except Exception:
-            return self.make_transparent_edges(image)
-
-    def make_transparent_color(self, image):
-        """Remove background based on color similarity."""
-        data = np.array(image)
-        background = data[0, 0, :3]  # Assume top-left corner is background
-        mask = np.all(np.abs(data[:, :, :3] - background) <= self.color_params['tolerance'], axis=2)
-
-        # Remove small noise components
-        num_labels, labels = cv2.connectedComponents(mask.astype(np.uint8))
-        for i in range(1, num_labels):
-            if np.sum(labels == i) < self.color_params['min_size']:
-                mask[labels == i] = False
-
-        data[mask, 3] = 0
-        return Image.fromarray(data)
-
-    def make_transparent_edges(self, image):
-        """Remove background using edge detection & smooth inpainting."""
-        cv_image = cv2.cvtColor(np.array(image), cv2.COLOR_RGBA2BGR)
-        gray = cv2.cvtColor(cv_image, cv2.COLOR_BGR2GRAY)
-        blurred = cv2.GaussianBlur(gray, self.edge_params['gaussian_blur'], 0)
-
-        edges = cv2.Canny(blurred, self.edge_params['canny_threshold1'], self.edge_params['canny_threshold2'])
-        mask = cv2.dilate(edges, self.edge_params['dilate_kernel'], iterations=self.edge_params['dilate_iterations'])
-
-        # Smooth mask using inpainting
-        inpainted = cv2.inpaint(cv_image, mask, inpaintRadius=3, flags=cv2.INPAINT_TELEA)
-        result = cv2.cvtColor(inpainted, cv2.COLOR_BGR2RGBA)
-        result[:, :, 3] = 255 - mask  # Make edges transparent
-
-        return Image.fromarray(result)
-
-    def make_transparent_ai(self, image):
-        """Remove background using AI & enhance alpha channel."""
-        no_bg = remove(image)
-        data = np.array(no_bg)
-        alpha = cv2.GaussianBlur(data[:, :, 3], (3, 3), 0)
-        data[:, :, 3] = cv2.normalize(alpha, None, 0, 255, cv2.NORM_MINMAX)
-        return Image.fromarray(data)
-
-    def _postprocess_image(self, img, size):
-        """Scale and center the image."""
-        # Resize to target size
-        img = img.resize(size, Image.LANCZOS)
-        # Center the image if needed
-        if img.size != size:
-            new_img = Image.new('RGBA', size, (0, 0, 0, 0))
-            paste_x = (size[0] - img.size[0]) // 2
-            paste_y = (size[1] - img.size[1]) // 2
-            new_img.paste(img, (paste_x, paste_y))
-            img = new_img
-        return img
