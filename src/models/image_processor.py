@@ -24,41 +24,13 @@ DIMENSION_VALIDATION = {
 
 # 3. Format Definitions
 FORMAT_CONFIGS = {
-    'APPICON': {
-        'size': (1024, 1024),
-        'bg_color': (0, 0, 0, 0),  # Transparent
-        'description': 'Application icon with optional transparency'
-    },
-    'DEFAULT': {
-        'size': (1242, 1902),
-        'bg_color': (255, 255, 255, 255),  # White background
-        'description': 'Splash screen with maintained aspect ratio'
-    },
-    'DEFAULT_LG': {
-        'size': (1242, 2208),
-        'bg_color': (255, 255, 255, 255),  # White background
-        'description': 'Large splash screen'
-    },
-    'DEFAULT_XL': {
-        'size': (1242, 2688),
-        'bg_color': (255, 255, 255, 255),  # White background
-        'description': 'Extra large splash screen'
-    },
-    'FEATURE_GRAPHIC': {
-        'size': (1024, 500),
-        'bg_color': (255, 255, 255, 255),  # White background
-        'description': 'Feature graphic with solid background'
-    },
-    'LOGO': {
-        'size': (1024, 1024),
-        'bg_color': (0, 0, 0, 0),  # Transparent
-        'description': 'High-resolution logo with transparency'
-    },
-    'LOGO_WIDE': {
-        'size': (1024, 500),
-        'bg_color': (0, 0, 0, 0),  # Transparent
-        'description': 'Wide high-resolution logo with transparency'
-    }
+    'APPICON': {'size': (1024, 1024), 'bg_color': (0, 0, 0, 0), 'description': 'Application icon'},
+    'DEFAULT': {'size': (1242, 1902), 'bg_color': (255, 255, 255, 255), 'description': 'Splash screen'},
+    'DEFAULT_LG': {'size': (1242, 2208), 'bg_color': (255, 255, 255, 255), 'description': 'Large splash'},
+    'DEFAULT_XL': {'size': (1242, 2688), 'bg_color': (255, 255, 255, 255), 'description': 'XL splash'},
+    'FEATURE_GRAPHIC': {'size': (1024, 500), 'bg_color': (255, 255, 255, 255), 'description': 'Feature graphic'},
+    'LOGO': {'size': (1024, 1024), 'bg_color': (0, 0, 0, 0), 'description': 'High-resolution logo'},
+    'LOGO_WIDE': {'size': (1024, 500), 'bg_color': (0, 0, 0, 0), 'description': 'Wide logo'}
 }
 
 # 4. Processing Settings
@@ -87,16 +59,13 @@ class ImageProcessor(BaseImageProcessor):
         self.formats = FORMAT_CONFIGS
 
     def get_format_config(self, format_name: str) -> dict:
-        """
-        Get format configuration.
-        Overrides base class method to use local format definitions.
-        """
+        """Retrieve format configuration."""
         if format_name not in self.formats:
             raise ValueError(f"Unknown format: {format_name}")
         return self.formats[format_name]
 
     def validate_file(self, file_path: Path) -> bool:
-        """Validate file existence, format and size."""
+        """Validate file existence, format, and size."""
         if not file_path.exists():
             raise ValueError(f"File not found: {file_path}")
 
@@ -119,26 +88,37 @@ class ImageProcessor(BaseImageProcessor):
 
         return True
 
-    def calculate_dimensions(self, img_size: Tuple[int, int], target_size: Tuple[int, int]) -> Tuple[int, int]:
-        """Calculate new dimensions maintaining aspect ratio."""
+    def calculate_dimensions(self, img_size: Tuple[int, int], target_size: Tuple[int, int]) -> Tuple[int, int, int, int]:
+        """
+        Resize the image dynamically while maintaining aspect ratio.
+
+        Returns:
+            Tuple[int, int, int, int]: (new width, new height, left offset, top offset)
+        """
         img_width, img_height = img_size
         target_width, target_height = target_size
 
+        # Calculate aspect ratios
         img_ratio = img_width / img_height
         target_ratio = target_width / target_height
 
+        # Scale image to fit within target size
         if img_ratio > target_ratio:
-            new_width = int(target_height * img_ratio)
-            new_height = target_height
-        else:
             new_width = target_width
             new_height = int(target_width / img_ratio)
+        else:
+            new_height = target_height
+            new_width = int(target_height * img_ratio)
 
-        return (new_width, new_height)
+        # Center the image
+        left_offset = (target_width - new_width) // 2
+        top_offset = (target_height - new_height) // 2
+
+        return new_width, new_height, left_offset, top_offset
 
     def process_image(self, input_path: Path, output_path: Path, width: int, height: int, bg_color: tuple = (0, 0, 0, 0)):
         """
-        Process an image to the specified dimensions.
+        Process an image to dynamically fit within the target canvas without distortion.
         """
         try:
             self.validate_file(input_path)
@@ -147,28 +127,19 @@ class ImageProcessor(BaseImageProcessor):
                 self.validate_dimensions(img)
                 img = img.convert(PROCESSING_SETTINGS['target_mode'])
 
-                new_size = self.calculate_dimensions(img.size, (width, height))
+                # Get dynamically resized dimensions
+                new_width, new_height, left, top = self.calculate_dimensions(img.size, (width, height))
 
-                # Progressive downscaling if needed
-                if (new_size[0] < img.width * PROCESSING_SETTINGS['progressive_threshold'] or
-                    new_size[1] < img.height * PROCESSING_SETTINGS['progressive_threshold']):
-                    intermediate_size = (
-                        int(img.width * PROCESSING_SETTINGS['progressive_factor']),
-                        int(img.height * PROCESSING_SETTINGS['progressive_factor'])
-                    )
-                    img = img.resize(intermediate_size, PROCESSING_SETTINGS['resampling_small'])
+                # Resize the image dynamically
+                resized = img.resize((new_width, new_height), PROCESSING_SETTINGS['resampling_large'])
 
-                resized = img.resize(new_size, PROCESSING_SETTINGS['resampling_large'])
+                # Create a blank canvas with the target size
                 final = Image.new(PROCESSING_SETTINGS['target_mode'], (width, height), bg_color)
 
-                # Center the image
-                left = (width - new_size[0]) // 2
-                top = (height - new_size[1]) // 2
+                # Paste the resized image onto the centered position in the canvas
+                final.paste(resized, (left, top), resized if 'A' in img.getbands() else None)
 
-                # Paste with alpha mask
-                final.paste(resized, (left, top), resized)
-
-                # Save with optimization
+                # Save the processed image
                 final.save(
                     output_path,
                     SAVE_SETTINGS['format'],
@@ -181,17 +152,12 @@ class ImageProcessor(BaseImageProcessor):
 
         except Exception as e:
             self.logger.error(f"Error processing image: {str(e)}")
-            raise
+            raise  # Ensures the error is properly logged and re-raised
 
     def process_format(self, input_path: Path, output_path: Path, format_name: str):
-        """
-        Process an image according to a predefined format.
-        """
+        """Process an image according to a predefined format."""
         try:
             config = self.get_format_config(format_name)
-
-            # Ensure correct output filename
-            output_path = Path(output_path)
             output_path = output_path.parent / f"{format_name}.PNG"
 
             self.process_image(
@@ -209,8 +175,6 @@ class ImageProcessor(BaseImageProcessor):
             raise
 
     def process_logo(self, input_path: Path, output_path: Path, wide: bool = False):
-        """
-        Process an image as a logo, either square or wide format.
-        """
+        """Process an image as a logo, either square or wide format."""
         format_name = 'LOGO_WIDE' if wide else 'LOGO'
         self.process_format(input_path, output_path, format_name)
