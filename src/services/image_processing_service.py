@@ -66,10 +66,20 @@ class ImageProcessingService:
         output_path = output_dir / f"{format_name}.PNG"
         
         try:
+            # Handle special cases with specific processors
             if format_name == "PUSH":
                 self.push_processor.create_push_notification(input_path, output_path)
+            elif format_name == "LOGO_WIDE":
+                # Use the specialized logo processor method for wide format
+                self.image_processor.process_logo(input_path, output_path, wide=True)
+            elif format_name == "LOGO":
+                # Use the specialized logo processor method for square format
+                self.image_processor.process_logo(input_path, output_path, wide=False)
             else:
+                # Process all other formats normally
                 self.image_processor.process_format(input_path, output_path, format_name)
+
+            self.logger.info(f"Successfully processed format {format_name} to {output_path}")
 
             return {
                 "format": format_name,

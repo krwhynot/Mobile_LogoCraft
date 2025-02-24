@@ -5,17 +5,19 @@ from PIL import Image
 import logging
 from typing import Optional
 
+from src.config.formats import ALLOWED_FORMATS, IMAGE_SETTINGS
+
 # 1. **Initial File Validation**
 FILE_VALIDATION = {
-    'max_file_size': 50 * 1024 * 1024,  # 50MB max size
-    'allowed_formats': {".png", ".jpg", ".jpeg", ".gif", ".bmp", ".tiff", ".jfif"},
+    'max_file_size': IMAGE_SETTINGS["max_file_size"],
+    'allowed_formats': ALLOWED_FORMATS,
     'chunk_size': 1024 * 1024  # File reading buffer
 }
 
 # 2. **Dimension Validation**
 DIMENSION_VALIDATION = {
-    'min_dimension': 90,
-    'max_dimension': 5000,
+    'min_dimension': IMAGE_SETTINGS["min_dimension"],
+    'max_dimension': IMAGE_SETTINGS["max_dimension"],
     'push_min_size': (64, 64)
 }
 
@@ -104,7 +106,7 @@ FORMAT_SETTINGS = {
 SAVE_SETTINGS = {
     'format': 'PNG',
     'optimize': True,
-    'quality': 95
+    'quality': IMAGE_SETTINGS["quality"]
 }
 
 
@@ -214,8 +216,14 @@ class PushProcessor:
 
                 final = processed.resize(FINAL_RESIZE['target_size'], FINAL_RESIZE['method'])
 
-                final.save(output_path, SAVE_SETTINGS['format'], optimize=SAVE_SETTINGS['optimize'])
+                final.save(
+                    output_path, 
+                    SAVE_SETTINGS['format'], 
+                    optimize=SAVE_SETTINGS['optimize'],
+                    quality=SAVE_SETTINGS['quality']
+                )
 
+            self.logger.info(f"Successfully created push notification icon: {output_path}")
             return output_path
 
         except Exception as e:

@@ -7,51 +7,16 @@ from PySide6.QtWidgets import (
     QGridLayout, QLabel
 )
 from PySide6.QtCore import Signal, Qt
-from typing import Set, Dict, Tuple
+from typing import Set
 
 from ..theme.colors import HungerRushColors, ThemeStyles, ThemeMode
+from src.config.formats import FORMAT_CONFIGS
 
 class FormatSelector(QWidget):
     """Enhanced format selector with grid layout and detailed format information."""
     
     # Signal emitted when format selection changes
     selectionChanged = Signal(set)
-    
-    # Output format configurations with dimensions and descriptions
-    OUTPUT_FORMATS: Dict[str, Tuple[Tuple[int, int], str]] = {
-        "APPICON": (
-            (1024, 1024),
-            "Application icon with optional transparency"
-        ),
-        "DEFAULT": (
-            (1242, 1902),
-            "Standard splash screen with maintained aspect ratio"
-        ),
-        "DEFAULT_LG": (
-            (1242, 2208),
-            "Large splash screen for higher resolution devices"
-        ),
-        "DEFAULT_XL": (
-            (1242, 2688),
-            "Extra large splash screen for modern devices"
-        ),
-        "FEATURE_GRAPHIC": (
-            (1024, 500),
-            "Feature graphic banner for store listings"
-        ),
-        "LOGO": (
-            (1024, 1024),
-            "High-resolution square logo with transparency"
-        ),
-        "LOGO_WIDE": (
-            (1024, 500),
-            "High-resolution wide logo with transparency"
-        ),
-        "PUSH": (
-            (96, 96),
-            "Small notification icon (white with transparency)"
-        )
-    }
     
     def __init__(self, theme_mode: ThemeMode = ThemeMode.DARK):
         """
@@ -81,7 +46,7 @@ class FormatSelector(QWidget):
         grid.setSpacing(int(ThemeStyles.SPACING['lg'].replace('px', '')))
         
         # Add format checkboxes to grid
-        for i, (format_name, (dimensions, description)) in enumerate(self.OUTPUT_FORMATS.items()):
+        for i, (format_name, config) in enumerate(FORMAT_CONFIGS.items()):
             # Create format container
             container = QWidget()
             container_layout = QVBoxLayout(container)
@@ -93,10 +58,12 @@ class FormatSelector(QWidget):
             cb.setStyleSheet(self._get_checkbox_style())
             
             # Create and style dimension label
+            dimensions = config["size"]
             dim_label = QLabel(f"{dimensions[0]}×{dimensions[1]} px")
             dim_label.setStyleSheet(self._get_label_style())
             
             # Add tooltip with full description
+            description = config["description"]
             container.setToolTip(f"{description}\nDimensions: {dimensions[0]}×{dimensions[1]} px")
             
             # Add widgets to container

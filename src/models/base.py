@@ -3,78 +3,29 @@ Base settings and configuration for image processing.
 """
 
 from pathlib import Path
-from typing import Dict, Tuple, Set
+from typing import Dict, Tuple, Set, Any
 import logging
+
+from src.config.formats import FORMAT_CONFIGS, IMAGE_SETTINGS, ALLOWED_FORMATS, ERROR_MESSAGES
 
 class BaseImageProcessor:
     """Shared configuration and validation for image processors."""
 
-    # Format specifications
-    FORMAT_CONFIGS = {
-        "APPICON": {
-            "size": (1024, 1024),
-            "bg_color": (0, 0, 0, 0),  # Transparent
-            "quality": 95,
-            "optimize": True
-        },
-        "DEFAULT": {
-            "size": (1242, 1902),
-            "bg_color": (255, 255, 255, 255),  # White background
-            "quality": 95,
-            "optimize": True
-        },
-        "DEFAULT_LG": {
-            "size": (1242, 2208),
-            "bg_color": (255, 255, 255, 255),
-            "quality": 95,
-            "optimize": True
-        },
-        "DEFAULT_XL": {
-            "size": (1242, 2688),
-            "bg_color": (255, 255, 255, 255),
-            "quality": 95,
-            "optimize": True
-        },
-        "FEATURE_GRAPHIC": {
-            "size": (1024, 500),
-            "bg_color": (255, 255, 255, 255),
-            "quality": 95,
-            "optimize": True
-        },
-        "LOGO": {
-            "size": (1024, 1024),
-            "bg_color": (0, 0, 0, 0),  # Transparent
-            "quality": 95,
-            "optimize": True
-        },
-        "PUSH": {
-            "size": (96, 96),
-            "bg_color": (255, 255, 255, 0),  # White with transparency
-            "quality": 95,
-            "optimize": True
-        }
-    }
+    # Import format configurations from centralized config
+    FORMAT_CONFIGS = FORMAT_CONFIGS
 
-    # Common settings
-    QUALITY: int = 95
-    OPTIMIZE: bool = True
-    MIN_DIMENSION: int = 90
-    MAX_DIMENSION: int = 5000
-    MAX_FILE_SIZE: int = 50 * 1024 * 1024  # 50MB
+    # Common settings imported from centralized config
+    QUALITY = IMAGE_SETTINGS["quality"]
+    OPTIMIZE = IMAGE_SETTINGS["optimize"]
+    MIN_DIMENSION = IMAGE_SETTINGS["min_dimension"]
+    MAX_DIMENSION = IMAGE_SETTINGS["max_dimension"]
+    MAX_FILE_SIZE = IMAGE_SETTINGS["max_file_size"]
 
-    # Allowed formats
-    ALLOWED_FORMATS: Set[str] = {
-        ".png", ".jpg", ".jpeg",
-        ".gif", ".bmp", ".tiff", ".jfif"
-    }
+    # Allowed formats imported from centralized config
+    ALLOWED_FORMATS: Set[str] = ALLOWED_FORMATS
 
-    # Error messages
-    ERROR_MESSAGES = {
-        "invalid_image": "The selected file is not a valid image format.",
-        "file_too_large": f"File exceeds the maximum allowed size of {MAX_FILE_SIZE // (1024 * 1024)}MB.",
-        "resolution_too_low": f"Image dimensions must be at least {MIN_DIMENSION}x{MIN_DIMENSION}px.",
-        "resolution_too_high": f"Image dimensions cannot exceed {MAX_DIMENSION}x{MAX_DIMENSION}px."
-    }
+    # Error messages imported from centralized config
+    ERROR_MESSAGES = ERROR_MESSAGES
 
     def __init__(self):
         """Initialize logger for image processing."""
@@ -109,7 +60,7 @@ class BaseImageProcessor:
         output_path.parent.mkdir(parents=True, exist_ok=True)
 
     @classmethod
-    def get_format_config(cls, format_name: str) -> Dict:
+    def get_format_config(cls, format_name: str) -> Dict[str, Any]:
         """
         Get configuration for a specific format.
         
