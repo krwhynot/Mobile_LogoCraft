@@ -37,17 +37,9 @@ class ImageDropZone(QLabel):
         self.setStyleSheet(f"""
             QLabel {{
                 color: {colors['label_color']};
-                background-color: {colors['section_bg']};
-                border: 2px dashed {colors['border_color']};
-                border-radius: {ThemeStyles.BORDER_RADIUS['lg']};
-                padding: {ThemeStyles.SPACING['xl']};
+                background-color: transparent;
                 font-family: {ThemeStyles.FONT['family']};
-                font-size: {ThemeStyles.FONT['size']['md']};
-            }}
-            
-            QLabel:hover {{
-                background-color: {colors['section_bg']};
-                border-color: {colors['button_color']};
+                font-size: {ThemeStyles.FONT['size']['sm']};
             }}
         """)
     
@@ -76,6 +68,15 @@ class ImageDropZone(QLabel):
         """Update the label text with the dropped file name."""
         file_name = os.path.basename(file_path)
         self.setText(f"File loaded: {file_name}")
+        self.setStyleSheet(f"""
+            QLabel {{
+                color: #23A47C;  /* Use teal color for successful load */
+                background-color: transparent;
+                font-family: {ThemeStyles.FONT['family']};
+                font-size: {ThemeStyles.FONT['size']['sm']};
+                font-weight: bold;
+            }}
+        """)
     
     def _is_valid_image(self, file_path: str) -> bool:
         """

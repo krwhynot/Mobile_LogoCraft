@@ -32,47 +32,37 @@ class FormatSelector(QWidget):
         self._setup_ui()
     
     def _setup_ui(self):
-        """Set up the format selector user interface with a direct grid layout."""
-        # Create main layout
+        """Set up the format selector user interface with a compact grid layout."""
+        # Create main layout with minimal margins and spacing
         layout = QVBoxLayout(self)
-        layout.setSpacing(int(ThemeStyles.SPACING['md'].replace('px', '')))
+        layout.setSpacing(0)  # Minimal spacing
+        layout.setContentsMargins(0, 0, 0, 0)  # No margins
         
-        # Create group box for formats
-        group_box = QGroupBox("Select Output Formats")
-        group_box.setStyleSheet(self._get_group_box_style())
+        # Create title label instead of group box to save space
+        title_label = QLabel("Select Output Formats")
+        title_label.setStyleSheet(self._get_title_style())
+        title_label.setContentsMargins(8, 0, 0, 0)
         
-        # Create grid layout for format options
-        grid = QGridLayout(group_box)
-        grid.setSpacing(int(ThemeStyles.SPACING['lg'].replace('px', '')))
+        # Create grid layout for format options with minimal spacing
+        grid_widget = QWidget()
+        grid = QGridLayout(grid_widget)
+        grid.setSpacing(2)  # Minimal spacing between checkboxes
+        grid.setContentsMargins(8, 4, 8, 4)  # Very small margins
         
         # Add format checkboxes to grid
         for i, (format_name, config) in enumerate(FORMAT_CONFIGS.items()):
-            # Create format container
-            container = QWidget()
-            container_layout = QVBoxLayout(container)
-            container_layout.setSpacing(int(ThemeStyles.SPACING['xs'].replace('px', '')))
-            container_layout.setContentsMargins(0, 0, 0, 0)  # Remove margins for tighter layout
-            
-            # Create and style checkbox
-            cb = QCheckBox(format_name.replace('_', ' '))  # Add space between words for better readability
-            cb.setStyleSheet(self._get_checkbox_style())
-            
-            # Create and style dimension label
+            # Create checkbox with integrated dimension info
             dimensions = config["size"]
-            dim_label = QLabel(f"{dimensions[0]}×{dimensions[1]} px")
-            dim_label.setStyleSheet(self._get_label_style())
+            cb = QCheckBox(f"{format_name.replace('_', ' ')} ({dimensions[0]}×{dimensions[1]} px)")
+            cb.setStyleSheet(self._get_checkbox_style())
             
             # Add tooltip with full description
             description = config["description"]
-            container.setToolTip(f"{description}\nDimensions: {dimensions[0]}×{dimensions[1]} px")
-            
-            # Add widgets to container
-            container_layout.addWidget(cb)
-            container_layout.addWidget(dim_label)
+            cb.setToolTip(f"{description}\nDimensions: {dimensions[0]}×{dimensions[1]} px")
             
             # Calculate grid position (2 columns)
             row, col = divmod(i, 2)
-            grid.addWidget(container, row, col)
+            grid.addWidget(cb, row, col)
             
             # Connect checkbox signal and store reference
             # Only check the PUSH checkbox by default
@@ -84,28 +74,31 @@ class FormatSelector(QWidget):
             if format_name == "PUSH":
                 self.selected.add(format_name)
         
-        # Add group box directly to layout without scroll area
-        layout.addWidget(group_box)
+        # Add widgets to layout
+        layout.addWidget(title_label)
+        layout.addWidget(grid_widget)
+        
+        # Add background styling to the entire widget
+        self.setStyleSheet(self._get_background_style())
     
-    def _get_group_box_style(self) -> str:
-        """Get the style for the group box."""
+    def _get_title_style(self) -> str:
+        """Get the style for the title label."""
         colors = HungerRushColors.LIGHT if self.theme_mode == ThemeMode.LIGHT else HungerRushColors.DARK
         return f"""
-            QGroupBox {{
-                background-color: {colors['section_bg']};
-                border: 1px solid {colors['border_color']};
-                border-radius: {ThemeStyles.BORDER_RADIUS['md']};
-                margin-top: 1.5em;
-                padding: {ThemeStyles.SPACING['lg']};
-                font-family: {ThemeStyles.FONT['family']};
-            }}
-            QGroupBox::title {{
-                color: {colors['label_color']};
-                subcontrol-origin: margin;
-                left: {ThemeStyles.SPACING['md']};
-                padding: 0 {ThemeStyles.SPACING['sm']};
-                font-weight: bold;
-            }}
+            color: {colors['label_color']};
+            font-family: {ThemeStyles.FONT['family']};
+            font-size: {ThemeStyles.FONT['size']['sm']};
+            font-weight: bold;
+            padding: 4px 0;
+        """
+    
+    def _get_background_style(self) -> str:
+        """Get the style for the widget background."""
+        colors = HungerRushColors.LIGHT if self.theme_mode == ThemeMode.LIGHT else HungerRushColors.DARK
+        return f"""
+            background-color: {colors['section_bg']};
+            border: 1px solid {colors['border_color']};
+            border-radius: {ThemeStyles.BORDER_RADIUS['sm']};
         """
     
     def _get_checkbox_style(self) -> str:
@@ -115,37 +108,25 @@ class FormatSelector(QWidget):
             QCheckBox {{
                 color: {colors['checkbox_color']};
                 font-family: {ThemeStyles.FONT['family']};
-                font-size: {ThemeStyles.FONT['size']['md']};
-                padding: {ThemeStyles.SPACING['sm']};
-                font-weight: bold;
+                font-size: {ThemeStyles.FONT['size']['sm']};
+                padding: 1px;
+                margin: 0;
             }}
             QCheckBox::indicator {{
-                width: {ThemeStyles.STYLES['checkbox']['size']};
-                height: {ThemeStyles.STYLES['checkbox']['size']};
-                border-radius: {ThemeStyles.BORDER_RADIUS['sm']};
+                width: 14px;
+                height: 14px;
+                border-radius: 2px;
             }}
             QCheckBox::indicator:unchecked {{
-                border: 2px solid {colors['border_color']};
+                border: 1px solid {colors['border_color']};
                 background: transparent;
             }}
             QCheckBox::indicator:checked {{
-                border: 2px solid {colors['button_color']};
+                border: 1px solid {colors['button_color']};
                 background: {colors['button_color']};
             }}
             QCheckBox::indicator:hover {{
                 border-color: {colors['button_color']};
-            }}
-        """
-    
-    def _get_label_style(self) -> str:
-        """Get the style for dimension labels."""
-        colors = HungerRushColors.LIGHT if self.theme_mode == ThemeMode.LIGHT else HungerRushColors.DARK
-        return f"""
-            QLabel {{
-                color: {colors['text_color']};
-                font-family: {ThemeStyles.FONT['family']};
-                font-size: {ThemeStyles.FONT['size']['sm']};
-                padding-left: {ThemeStyles.SPACING['lg']};
             }}
         """
     

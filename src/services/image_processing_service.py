@@ -50,6 +50,20 @@ class ImageProcessingService:
         except Exception as e:
             self.logger.error(f"Batch processing error: {e}")
             raise
+    
+    def process_single_format(self, input_path: Path, output_dir: Path, format_name: str) -> dict:
+        """
+        Process an image into a single format, suitable for individual processing with progress tracking.
+        
+        Args:
+            input_path (Path): Path to input image
+            output_dir (Path): Output directory
+            format_name (str): Name of the format to process
+            
+        Returns:
+            dict: Processing result with format, status, and output path
+        """
+        return self._process_single_format(input_path, output_dir, format_name)
 
     def _process_single_format(self, input_path: Path, output_dir: Path, format_name: str) -> dict:
         """
