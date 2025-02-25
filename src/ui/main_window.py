@@ -18,6 +18,7 @@ from src.ui.components.progress_indicator import ProgressIndicator
 from src.ui.theme.colors import HungerRushColors, ThemeStyles, ThemeMode
 from src.ui.components.file_section import FileSectionWidget
 from src.ui.components.background_removal_option import BackgroundRemovalOption
+from src.ui.components.message_dialogs import show_error, show_info, show_warning, show_confirmation
 
 
 logger = get_logger(__name__)
@@ -244,26 +245,29 @@ class MainWindow(QMainWindow):
         """
         if not self.file_section.input_file_entry.text():
             self.progress_indicator.show_status("No input file selected!", "error")
+            show_error(self, "Input Error", "No input file selected!")
             return False
 
         input_path = Path(self.file_section.input_file_entry.text())
         if not input_path.exists():
             self.progress_indicator.show_status("Input file does not exist!", "error")
+            show_error(self, "File Error", "Input file does not exist!")
             return False
 
         if input_path.suffix.lower() not in BaseImageProcessor.ALLOWED_FORMATS:
-            self.progress_indicator.show_status(
-                f"Invalid file format! Allowed formats: {', '.join(BaseImageProcessor.ALLOWED_FORMATS)}",
-                "error"
-            )
+            error_msg = f"Invalid file format! Allowed formats: {', '.join(BaseImageProcessor.ALLOWED_FORMATS)}"
+            self.progress_indicator.show_status(error_msg, "error")
+            show_error(self, "Format Error", error_msg)
             return False
 
         if not self.file_section.output_dir_entry.text():
             self.progress_indicator.show_status("No output directory selected!", "error")
+            show_error(self, "Output Error", "No output directory selected!")
             return False
 
         if not self.format_selector.get_selected():
             self.progress_indicator.show_status("No formats selected!", "error")
+            show_error(self, "Selection Error", "No formats selected!")
             return False
 
         return True
@@ -279,15 +283,24 @@ class MainWindow(QMainWindow):
         if failed:
             error_msg = f"Failed to process formats: {', '.join(failed)}"
             self.progress_indicator.show_status(error_msg, "error")
+            show_error(self, "Processing Error", error_msg)
             logger.error(error_msg)
         else:
             success_msg = f"Successfully processed {len(results)} formats!"
             self.progress_indicator.show_status(success_msg, "success")
+            show_info(self, "Success", success_msg)
             logger.info(success_msg)
 
     def closeEvent(self, event):
-        """Handle application closure."""
-        event.accept()
+        """Handle application closure with confirmation if processing."""
+        if not self.process_button.isEnabled():
+            # Processing is active, ask for confirmation
+            if show_confirmation(self, "Confirm Exit", "Image processing is active. Are you sure you want to exit?"):
+                event.accept()
+            else:
+                event.ignore()
+        else:
+            event.accept()
 
 if __name__ == "__main__":
     from PySide6.QtWidgets import QApplication

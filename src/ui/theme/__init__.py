@@ -4,16 +4,14 @@ This package provides theme management functionality including color schemes,
 component sizing, and consistent styling across the application.
 """
 
-from src.ui.theme.manager import (
+from src.ui.theme.colors import (
     ThemeMode,
-    ComponentSize,
     HungerRushColors,
-    ThemeManager
+    ThemeStyles
 )
 
 __all__ = [
     'ThemeMode',
-    'ComponentSize',
     'HungerRushColors',
-    'ThemeManager'
+    'ThemeStyles'
 ]

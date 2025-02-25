@@ -35,6 +35,25 @@ This document identifies files, classes, and functions that appear to be unused 
    - Static method for updating widget themes
    - The entire class is unused, including this method
 
+## Standalone Scripts
+
+The following scripts are not directly imported by other files but serve specific purposes:
+
+1. **check_theme_keys.py**
+   - Utility script to check for missing theme color keys in UI components
+   - Runs as a standalone script, not imported by other files
+   - Useful for development and maintenance but not part of the core application
+
+2. **run.py**
+   - Main application launcher script
+   - Not imported by other files but executed directly
+   - Essential for running the application
+
+3. **run_app.ps1**
+   - PowerShell script to run the application from the correct directory
+   - Used as a convenience wrapper for run.py
+   - Not part of the Python codebase but important for Windows users
+
 ## Redundant Code
 
 1. **FormatSelector** class in `src/ui/widgets.py`
@@ -60,6 +79,10 @@ This document identifies files, classes, and functions that appear to be unused 
    - Remove the unused ThemeManager class or integrate it properly
    - Consolidate the duplicate HungerRushColors implementations
 
-4. **Update documentation**
+4. **Document standalone scripts**
+   - Add comments to standalone scripts explaining their purpose
+   - Consider adding a README file in the project root explaining how to run the application
+
+5. **Update documentation**
    - Update the project structure documentation to reflect these changes
    - Document the decision to remove unused code
