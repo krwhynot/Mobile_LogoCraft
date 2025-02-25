@@ -6,6 +6,7 @@ import logging
 from typing import Optional
 
 from src.config.formats import ALLOWED_FORMATS, IMAGE_SETTINGS
+from src.models.background_remover import BackgroundRemover
 
 # 1. **Initial File Validation**
 FILE_VALIDATION = {
@@ -113,6 +114,7 @@ SAVE_SETTINGS = {
 class PushProcessor:
     def __init__(self, logger: Optional[logging.Logger] = None):
         self.logger = logger or logging.getLogger(__name__)
+        self.background_remover = BackgroundRemover()
 
     def validate_file(self, file_path: Path) -> bool:
         if not file_path.exists():
@@ -202,20 +204,60 @@ class PushProcessor:
 
         return Image.fromarray(rgba_result)
 
-    def create_push_notification(self, input_path: Path, output_path: Path) -> Path:
+    def create_push_notification(self, input_path: Path, output_path: Path, remove_background: bool = False) -> Path:
+        """
+        Process an image into a PUSH notification icon.
+        
+        Args:
+            input_path: Path to the input image
+            output_path: Path where the output image will be saved
+            remove_background: Whether to perform background removal (from checkbox selection)
+            
+        Returns:
+            Path to the processed image
+        """
         try:
+            self.logger.info(f"Processing push notification icon. Background removal: {remove_background}")
             self.validate_file(input_path)
 
+            # Open the image
             with Image.open(input_path) as img:
                 img = img.convert(MODE_SETTINGS['target_mode'])
                 self.validate_dimensions(img)
 
+                # Resize to intermediate size for processing
                 img = img.resize(INTERMEDIATE_RESIZE['target_size'], INTERMEDIATE_RESIZE['method'])
-
+                
+                # STEP 1: Background removal if enabled (from UI checkbox)
+                # This must be applied to the color image BEFORE the coloring book effect
+                if remove_background:
+                    self.logger.info("STEP 1: Applying background removal to colored image...")
+                    
+                    # Convert PIL image to CV2 format for background detection/removal
+                    img_array = np.array(img)
+                    cv2_img = cv2.cvtColor(img_array, cv2.COLOR_RGBA2BGRA)
+                    
+                    # Check if image has white background
+                    has_white_bg = self.background_remover.detect_white_background(cv2_img[:, :, :3])
+                    
+                    if has_white_bg:
+                        # Remove background (returns BGRA image)
+                        removed_bg = self.background_remover.remove_background(cv2_img[:, :, :3])
+                        
+                        # Convert back to PIL for further processing
+                        # Note: we keep the original colors here, no white conversion yet
+                        img = Image.fromarray(cv2.cvtColor(removed_bg, cv2.COLOR_BGRA2RGBA))
+                    else:
+                        self.logger.info("No white background detected, skipping background removal")
+                
+                # STEP 2: Apply coloring book effect
+                # This will create the white background with black outlines
                 processed = self.create_coloring_book_effect(img)
-
+                
+                # STEP 3: Final resize to target dimensions
                 final = processed.resize(FINAL_RESIZE['target_size'], FINAL_RESIZE['method'])
 
+                # Save the resulting image
                 final.save(
                     output_path, 
                     SAVE_SETTINGS['format'], 

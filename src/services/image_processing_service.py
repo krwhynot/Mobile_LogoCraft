@@ -6,6 +6,7 @@ import logging
 from src.models.image_processor import ImageProcessor
 from src.models.push_processor import PushProcessor
 from src.models.base import BaseImageProcessor
+from src.models.background_remover import BackgroundRemover
 from src.utils.logging import get_logger
 
 class ImageProcessingService:
@@ -15,10 +16,11 @@ class ImageProcessingService:
         """Initialize processors and load format configurations."""
         self.image_processor = ImageProcessor()
         self.push_processor = PushProcessor()
+        self.background_remover = BackgroundRemover()
         self.logger = get_logger(__name__)
         self.formats = BaseImageProcessor.FORMAT_CONFIGS
 
-    def process_batch(self, input_path: Path, output_dir: Path, selected_formats: set) -> list:
+    def process_batch(self, input_path: Path, output_dir: Path, selected_formats: set, remove_background: bool = False) -> list:
         """
         Process a batch of images into multiple formats.
         
@@ -26,6 +28,7 @@ class ImageProcessingService:
             input_path (Path): Path to the input image
             output_dir (Path): Directory for output files
             selected_formats (set): Set of format names to process
+            remove_background (bool): Whether to remove white backgrounds
             
         Returns:
             list: List of dictionaries containing processing results
@@ -41,7 +44,7 @@ class ImageProcessingService:
 
             results = []
             for format_name in selected_formats:
-                result = self._process_single_format(input_path, output_dir, format_name)
+                result = self._process_single_format(input_path, output_dir, format_name, remove_background)
                 results.append(result)
 
             self._log_batch_results(results)
@@ -51,7 +54,7 @@ class ImageProcessingService:
             self.logger.error(f"Batch processing error: {e}")
             raise
     
-    def process_single_format(self, input_path: Path, output_dir: Path, format_name: str) -> dict:
+    def process_single_format(self, input_path: Path, output_dir: Path, format_name: str, remove_background: bool = False) -> dict:
         """
         Process an image into a single format, suitable for individual processing with progress tracking.
         
@@ -59,13 +62,14 @@ class ImageProcessingService:
             input_path (Path): Path to input image
             output_dir (Path): Output directory
             format_name (str): Name of the format to process
+            remove_background (bool): Whether to remove white backgrounds
             
         Returns:
             dict: Processing result with format, status, and output path
         """
-        return self._process_single_format(input_path, output_dir, format_name)
+        return self._process_single_format(input_path, output_dir, format_name, remove_background)
 
-    def _process_single_format(self, input_path: Path, output_dir: Path, format_name: str) -> dict:
+    def _process_single_format(self, input_path: Path, output_dir: Path, format_name: str, remove_background: bool = False) -> dict:
         """
         Process an image into a single format.
         
@@ -73,6 +77,7 @@ class ImageProcessingService:
             input_path (Path): Path to input image
             output_dir (Path): Output directory
             format_name (str): Name of the format to process
+            remove_background (bool): Whether to remove white backgrounds
             
         Returns:
             dict: Processing result with format, status, and output path
@@ -80,18 +85,56 @@ class ImageProcessingService:
         output_path = output_dir / f"{format_name}.PNG"
         
         try:
-            # Handle special cases with specific processors
+            # Handle PUSH format with our updated processor that handles background removal internally
             if format_name == "PUSH":
-                self.push_processor.create_push_notification(input_path, output_path)
-            elif format_name == "LOGO_WIDE":
+                self.logger.info(f"Processing PUSH format with background removal={remove_background}")
+                self.push_processor.create_push_notification(input_path, output_path, remove_background)
+                return {
+                    "format": format_name,
+                    "status": "success",
+                    "output_path": str(output_path)
+                }
+            
+            # For other formats, use the existing background removal logic
+            import cv2
+            import numpy as np
+            
+            # Read the input image
+            img = cv2.imread(str(input_path))
+            
+            # Apply background removal if enabled and format supports transparency
+            supports_transparency = format_name in ["LOGO", "LOGO_WIDE", "APPICON"]
+            
+            if remove_background and supports_transparency:
+                # Check if the image has a white background
+                has_white_bg = self.background_remover.detect_white_background(img)
+                
+                if has_white_bg:
+                    self.logger.info(f"Removing white background for {format_name}")
+                    img = self.background_remover.remove_background(img)
+            
+            # Handle special cases with specific processors
+            if format_name == "LOGO_WIDE":
                 # Use the specialized logo processor method for wide format
-                self.image_processor.process_logo(input_path, output_path, wide=True)
+                if remove_background and has_white_bg:
+                    # Save the processed image with alpha channel
+                    cv2.imwrite(str(output_path), img)
+                else:
+                    self.image_processor.process_logo(input_path, output_path, wide=True)
             elif format_name == "LOGO":
                 # Use the specialized logo processor method for square format
-                self.image_processor.process_logo(input_path, output_path, wide=False)
+                if remove_background and has_white_bg:
+                    # Save the processed image with alpha channel
+                    cv2.imwrite(str(output_path), img)
+                else:
+                    self.image_processor.process_logo(input_path, output_path, wide=False)
             else:
                 # Process all other formats normally
-                self.image_processor.process_format(input_path, output_path, format_name)
+                if format_name == "APPICON" and remove_background and has_white_bg:
+                    # Save the processed image with alpha channel
+                    cv2.imwrite(str(output_path), img)
+                else:
+                    self.image_processor.process_format(input_path, output_path, format_name)
 
             self.logger.info(f"Successfully processed format {format_name} to {output_path}")
 

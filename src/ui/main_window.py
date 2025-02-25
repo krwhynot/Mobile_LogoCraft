@@ -17,6 +17,7 @@ from src.ui.components.format_selector import FormatSelector
 from src.ui.components.progress_indicator import ProgressIndicator
 from src.ui.theme.colors import HungerRushColors, ThemeStyles, ThemeMode
 from src.ui.components.file_section import FileSectionWidget
+from src.ui.components.background_removal_option import BackgroundRemovalOption
 
 
 logger = get_logger(__name__)
@@ -29,8 +30,8 @@ class MainWindow(QMainWindow):
     DEFAULT_OUTPUT_PATH = str(Path.home() / "Desktop" / "processed_images")
 
     # Window settings
-    WINDOW_TITLE = "HungerRush Image Processor"
-    WINDOW_GEOMETRY = (200, 200, 580, 510)
+    WINDOW_TITLE = "Mobile LogoCraft"
+    WINDOW_GEOMETRY = (200, 200, 580, 580)
 
     def __init__(self, theme_mode: ThemeMode = ThemeMode.DARK):
         """
@@ -74,6 +75,11 @@ class MainWindow(QMainWindow):
             browse_output_callback=self._browse_output_directory
         )
         self.main_layout.addWidget(self.file_section)
+        
+        # Add background removal option
+        self.bg_removal_option = BackgroundRemovalOption(self.theme_mode)
+        self.bg_removal_option.setFixedHeight(80)
+        self.main_layout.addWidget(self.bg_removal_option)
 
         self._setup_format_selector()
         self._setup_process_button()
@@ -201,11 +207,13 @@ class MainWindow(QMainWindow):
             input_path = Path(self.file_section.input_file_entry.text())
             output_dir = Path(self.file_section.output_dir_entry.text())
             selected_formats = self.format_selector.get_selected()
+            remove_background = self.bg_removal_option.is_background_removal_enabled()
 
             logger.info("Starting image processing:")
             logger.info(f"Input file: {input_path}")
             logger.info(f"Output directory: {output_dir}")
             logger.info(f"Selected formats: {selected_formats}")
+            logger.info(f"Background removal: {remove_background}")
 
             output_dir.mkdir(parents=True, exist_ok=True)
             self.progress_indicator.show_status("Preparing to process images...", "info")
@@ -215,7 +223,7 @@ class MainWindow(QMainWindow):
             for i, format_name in enumerate(selected_formats):
                 progress_percent = int((i / total_formats) * 100)
                 self.progress_indicator.update_progress(progress_percent, "Processing", format_name)
-                result = self.processor.process_single_format(input_path, output_dir, format_name)
+                result = self.processor.process_single_format(input_path, output_dir, format_name, remove_background)
                 results.append(result)
 
             self._stop_processing_progress()

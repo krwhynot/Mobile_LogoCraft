@@ -1,254 +1,371 @@
+"""
+Batch analysis script for evaluating background removal methods with different parameters
+"""
 import os
 import sys
-import cv2
-import numpy as np
+import time
+import argparse
+import logging
+from pathlib import Path
+from typing import Dict, List, Tuple, Optional
 
-# Optional import for plotting (won't break if not available)
-try:
-    import matplotlib.pyplot as plt
-    MATPLOTLIB_AVAILABLE = True
-except ImportError:
-    MATPLOTLIB_AVAILABLE = False
-    plt = None
+# Configure logging
+logging.basicConfig(
+    level=logging.INFO,
+    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s'
+)
+logger = logging.getLogger(__name__)
 
-# Add the project root to the Python path
-project_root = r'R:\Projects\Python\Mobile_LogoCraft'
-sys.path.insert(0, project_root)
+# Import test module functionality
+from test_background_removal import (
+    ThresholdRemovalMethod, 
+    ChromaKeyRemovalMethod,
+    ContourBasedRemovalMethod,
+    GrabCutRemovalMethod,
+    evaluate_transparency,
+    save_results_report
+)
 
-class BackgroundRemovalAnalyzer:
-    def __init__(self, image_path: str):
-        """
-        Initialize the analyzer with an input image
-        
-        Args:
-            image_path (str): Path to the input image
-        """
-        # Read image
-        self.original_image = cv2.imread(image_path)
-        self.image_name = os.path.basename(image_path)
-        
-        if self.original_image is None:
-            raise ValueError(f"Could not read image: {image_path}")
-        
-        self.original_image_rgb = cv2.cvtColor(self.original_image, cv2.COLOR_BGR2RGB)
-        
-        # Convert to grayscale
-        self.gray_image = cv2.cvtColor(self.original_image, cv2.COLOR_BGR2GRAY)
-        
-        # Metrics dictionary to store analysis results
-        self.metrics = {}
+def parse_args():
+    """Parse command line arguments"""
+    parser = argparse.ArgumentParser(description='Batch Background Removal Analysis')
     
-    def analyze_thresholding(self):
-        """
-        Analyze image using Otsu's thresholding
-        
-        Returns:
-            Dict of thresholding analysis metrics
-        """
-        # Otsu's Thresholding
-        _, otsu_thresh = cv2.threshold(self.gray_image, 0, 255, 
-                                       cv2.THRESH_BINARY + cv2.THRESH_OTSU)
-        
-        # Calculate metrics
-        background_ratio = np.sum(otsu_thresh == 0) / otsu_thresh.size
-        foreground_ratio = np.sum(otsu_thresh == 255) / otsu_thresh.size
-        
-        return {
-            'method': 'Otsu Thresholding',
-            'otsu_threshold': cv2.threshold(self.gray_image, 0, 255, 
-                                            cv2.THRESH_BINARY + cv2.THRESH_OTSU)[0],
-            'background_ratio': background_ratio,
-            'foreground_ratio': foreground_ratio,
-        }
+    parser.add_argument('--input-dir', type=str, 
+                        default=str(Path(__file__).parent / 'assets' / 'test_images'),
+                        help='Directory containing test images')
     
-    def analyze_edge_detection(self):
-        """
-        Analyze image using Canny edge detection
-        
-        Returns:
-            Dict of edge detection analysis metrics
-        """
-        # Canny Edge Detection
-        edges = cv2.Canny(self.gray_image, 100, 200)
-        
-        # Calculate edge metrics
-        edge_density = np.sum(edges > 0) / edges.size
-        
-        return {
-            'method': 'Canny Edge Detection',
-            'edge_density': edge_density,
-            'total_edges': np.sum(edges > 0),
-            'edge_percentage': edge_density * 100
-        }
+    parser.add_argument('--output-dir', type=str, 
+                        default=str(Path(__file__).parent / 'assets' / 'output' / 'background_removal_batch'),
+                        help='Directory for output files')
     
-    def analyze_color_distribution(self):
-        """
-        Analyze color distribution in the image
-        
-        Returns:
-            Dict of color analysis metrics
-        """
-        # Reshape image for color analysis
-        pixels = self.original_image_rgb.reshape((-1, 3))
-        
-        # Calculate color statistics
-        mean_color = np.mean(pixels, axis=0)
-        std_color = np.std(pixels, axis=0)
-        
-        # Color diversity
-        unique_colors = len(np.unique(pixels, axis=0))
-        
-        return {
-            'method': 'Color Distribution',
-            'mean_color_rgb': mean_color.tolist(),
-            'color_std_dev_rgb': std_color.tolist(),
-            'unique_color_count': unique_colors,
-            'color_diversity_ratio': unique_colors / pixels.shape[0]
-        }
+    parser.add_argument('--methods', type=str, nargs='+',
+                        choices=['threshold', 'chroma_key', 'contour', 'grabcut', 'all'],
+                        default=['all'],
+                        help='Methods to test')
     
-    def analyze_contrast(self):
-        """
-        Analyze image contrast
-        
-        Returns:
-            Dict of contrast analysis metrics
-        """
-        # Calculate image contrast
-        contrast = np.std(self.gray_image)
-        
-        # Histogram analysis
-        hist = cv2.calcHist([self.gray_image], [0], None, [256], [0, 256])
-        hist_variance = np.var(hist)
-        
-        return {
-            'method': 'Contrast Analysis',
-            'contrast_std_dev': contrast,
-            'histogram_variance': hist_variance,
-            'min_intensity': np.min(self.gray_image),
-            'max_intensity': np.max(self.gray_image)
-        }
+    parser.add_argument('--threshold-values', type=int, nargs='+',
+                        default=[220, 230, 240, 250],
+                        help='Threshold values to test for threshold method')
     
-    def comprehensive_analysis(self):
-        """
-        Perform comprehensive analysis of image characteristics
-        
-        Returns:
-            Dict of analysis results
-        """
-        # Run all analysis techniques
-        self.metrics = {
-            'thresholding': self.analyze_thresholding(),
-            'edge_detection': self.analyze_edge_detection(),
-            'color_distribution': self.analyze_color_distribution(),
-            'contrast': self.analyze_contrast()
-        }
-        
-        return self.metrics
+    parser.add_argument('--tolerance-values', type=int, nargs='+',
+                        default=[10, 20, 30, 40],
+                        help='Tolerance values to test for chroma key method')
     
-    def recommend_background_removal_technique(self):
-        """
-        Recommend the best background removal technique
-        
-        Returns:
-            str: Recommended technique
-        """
-        # Scoring criteria
-        scores = {
-            'Otsu Thresholding': 0,
-            'GrabCut': 0,
-            'K-Means Clustering': 0,
-            'Deep Learning Segmentation': 0
-        }
-        
-        # Thresholding score
-        thresh_metrics = self.metrics['thresholding']
-        if 0.3 < thresh_metrics['background_ratio'] < 0.7:
-            scores['Otsu Thresholding'] += 2
-        
-        # Edge detection score
-        edge_metrics = self.metrics['edge_detection']
-        if 0.1 < edge_metrics['edge_density'] < 0.3:
-            scores['GrabCut'] += 2
-        
-        # Color distribution score
-        color_metrics = self.metrics['color_distribution']
-        if 0.05 < color_metrics['color_diversity_ratio'] < 0.2:
-            scores['K-Means Clustering'] += 2
-        
-        # Contrast score
-        contrast_metrics = self.metrics['contrast']
-        if contrast_metrics['contrast_std_dev'] > 30:
-            scores['Deep Learning Segmentation'] += 2
-        
-        # Recommend technique with highest score
-        recommended = max(scores, key=scores.get)
-        
-        return recommended
+    parser.add_argument('--blur-sizes', type=int, nargs='+',
+                        default=[3, 5, 7],
+                        help='Blur sizes to test for contour method')
+    
+    parser.add_argument('--grabcut-iterations', type=int, nargs='+',
+                        default=[3, 5, 7],
+                        help='Iteration counts to test for GrabCut method')
+    
+    parser.add_argument('--extensions', type=str, nargs='+',
+                        default=['.png', '.jpg', '.jpeg'],
+                        help='File extensions to process')
+    
+    return parser.parse_args()
 
-def batch_analyze_images(input_dir: str, output_dir: str):
-    """
-    Batch analyze images in a directory
+
+def run_batch_analysis(args):
+    """Run batch analysis with different parameters"""
+    input_dir = Path(args.input_dir)
+    output_dir = Path(args.output_dir)
     
-    Args:
-        input_dir (str): Directory containing input images
-        output_dir (str): Directory to save analysis results
-    """
-    # Ensure output directory exists
+    # Create output directory
     os.makedirs(output_dir, exist_ok=True)
     
-    # Create a summary file
-    summary_path = os.path.join(output_dir, 'background_removal_analysis_summary.txt')
+    # Get test images
+    image_files = []
+    for ext in args.extensions:
+        image_files.extend(list(input_dir.glob(f'*{ext}')))
     
-    # Open summary file
-    with open(summary_path, 'w') as summary_file:
-        summary_file.write("Background Removal Technique Analysis\n")
-        summary_file.write("=====================================\n\n")
+    if not image_files:
+        logger.error(f"No images found in {input_dir} with extensions {args.extensions}")
+        return
+    
+    logger.info(f"Found {len(image_files)} images for processing")
+    
+    # Determine which methods to test
+    methods_to_test = args.methods
+    if 'all' in methods_to_test:
+        methods_to_test = ['threshold', 'chroma_key', 'contour', 'grabcut']
+    
+    # Initialize results
+    results = []
+    
+    # Process each image
+    for image_path in image_files:
+        image_name = image_path.name
+        logger.info(f"Processing image: {image_name}")
         
-        # Process each image in the input directory
-        for filename in os.listdir(input_dir):
-            # Check if file is an image
-            if filename.lower().endswith(('.png', '.jpg', '.jpeg', '.gif', '.bmp')):
-                try:
-                    # Full path to image
-                    image_path = os.path.join(input_dir, filename)
+        # Load image
+        try:
+            from PIL import Image
+            image = Image.open(image_path)
+            
+            # Create directory for this image's results
+            image_output_dir = output_dir / image_path.stem
+            os.makedirs(image_output_dir, exist_ok=True)
+            
+            # Test each method with different parameters
+            if 'threshold' in methods_to_test:
+                for threshold in args.threshold_values:
+                    for tolerance in args.tolerance_values:
+                        method = ThresholdRemovalMethod(threshold=threshold, tolerance=tolerance)
+                        method_name = f"Threshold_{threshold}_{tolerance}"
+                        logger.info(f"  Testing {method_name}")
+                        
+                        start_time = time.time()
+                        result_image = method.remove_background(image)
+                        elapsed_time = time.time() - start_time
+                        
+                        # Save result
+                        output_path = image_output_dir / f"{method_name}.png"
+                        result_image.save(output_path)
+                        
+                        # Evaluate quality
+                        quality_score = evaluate_transparency(result_image)
+                        
+                        # Store result
+                        results.append({
+                            "image": image_name,
+                            "method": method_name,
+                            "execution_time": elapsed_time,
+                            "quality_score": quality_score,
+                            "output_path": output_path,
+                            "parameters": {
+                                "threshold": threshold,
+                                "tolerance": tolerance
+                            }
+                        })
+                        
+                        logger.info(f"    Time: {elapsed_time:.2f}s, Quality: {quality_score:.2f}")
+            
+            if 'chroma_key' in methods_to_test:
+                for tolerance in args.tolerance_values:
+                    method = ChromaKeyRemovalMethod(target_color=(255, 255, 255), tolerance=tolerance)
+                    method_name = f"ChromaKey_{tolerance}"
+                    logger.info(f"  Testing {method_name}")
                     
-                    # Create analyzer
-                    analyzer = BackgroundRemovalAnalyzer(image_path)
+                    start_time = time.time()
+                    result_image = method.remove_background(image)
+                    elapsed_time = time.time() - start_time
                     
-                    # Perform analysis
-                    results = analyzer.comprehensive_analysis()
+                    # Save result
+                    output_path = image_output_dir / f"{method_name}.png"
+                    result_image.save(output_path)
                     
-                    # Get recommended technique
-                    recommended_technique = analyzer.recommend_background_removal_technique()
+                    # Evaluate quality
+                    quality_score = evaluate_transparency(result_image)
                     
-                    # Write results to summary file
-                    summary_file.write(f"Image: {filename}\n")
-                    summary_file.write(f"Recommended Technique: {recommended_technique}\n\n")
+                    # Store result
+                    results.append({
+                        "image": image_name,
+                        "method": method_name,
+                        "execution_time": elapsed_time,
+                        "quality_score": quality_score,
+                        "output_path": output_path,
+                        "parameters": {
+                            "tolerance": tolerance
+                        }
+                    })
                     
-                    # Write detailed results
-                    for technique, metrics in results.items():
-                        summary_file.write(f"{technique.capitalize()} Metrics:\n")
-                        for key, value in metrics.items():
-                            summary_file.write(f"  {key}: {value}\n")
-                        summary_file.write("\n")
+                    logger.info(f"    Time: {elapsed_time:.2f}s, Quality: {quality_score:.2f}")
+            
+            if 'contour' in methods_to_test:
+                for threshold in args.threshold_values:
+                    for blur_size in args.blur_sizes:
+                        method = ContourBasedRemovalMethod(threshold=threshold, blur_size=blur_size)
+                        method_name = f"Contour_{threshold}_{blur_size}"
+                        logger.info(f"  Testing {method_name}")
+                        
+                        start_time = time.time()
+                        result_image = method.remove_background(image)
+                        elapsed_time = time.time() - start_time
+                        
+                        # Save result
+                        output_path = image_output_dir / f"{method_name}.png"
+                        result_image.save(output_path)
+                        
+                        # Evaluate quality
+                        quality_score = evaluate_transparency(result_image)
+                        
+                        # Store result
+                        results.append({
+                            "image": image_name,
+                            "method": method_name,
+                            "execution_time": elapsed_time,
+                            "quality_score": quality_score,
+                            "output_path": output_path,
+                            "parameters": {
+                                "threshold": threshold,
+                                "blur_size": blur_size
+                            }
+                        })
+                        
+                        logger.info(f"    Time: {elapsed_time:.2f}s, Quality: {quality_score:.2f}")
+            
+            if 'grabcut' in methods_to_test:
+                for iterations in args.grabcut_iterations:
+                    method = GrabCutRemovalMethod(iterations=iterations)
+                    method_name = f"GrabCut_{iterations}"
+                    logger.info(f"  Testing {method_name}")
                     
-                    summary_file.write("-" * 50 + "\n\n")
+                    start_time = time.time()
+                    result_image = method.remove_background(image)
+                    elapsed_time = time.time() - start_time
                     
-                    print(f"Analyzed: {filename}")
-                
-                except Exception as e:
-                    summary_file.write(f"Error analyzing {filename}: {str(e)}\n\n")
-                    print(f"Error analyzing {filename}: {str(e)}")
+                    # Save result
+                    output_path = image_output_dir / f"{method_name}.png"
+                    result_image.save(output_path)
+                    
+                    # Evaluate quality
+                    quality_score = evaluate_transparency(result_image)
+                    
+                    # Store result
+                    results.append({
+                        "image": image_name,
+                        "method": method_name,
+                        "execution_time": elapsed_time,
+                        "quality_score": quality_score,
+                        "output_path": output_path,
+                        "parameters": {
+                            "iterations": iterations
+                        }
+                    })
+                    
+                    logger.info(f"    Time: {elapsed_time:.2f}s, Quality: {quality_score:.2f}")
+                    
+        except Exception as e:
+            logger.error(f"Error processing {image_name}: {e}")
+            continue
     
-    print(f"Analysis complete. Results saved to {summary_path}")
+    # Generate enhanced report
+    generate_enhanced_report(results, output_dir)
+    logger.info(f"Batch analysis complete. Report saved to {output_dir / 'batch_analysis_report.md'}")
 
-def main():
-    # Set input and output directories
-    input_dir = r'R:\Projects\Python\Mobile_LogoCraft\tests\assets\test_images'
-    output_dir = r'R:\Projects\Python\Mobile_LogoCraft\tests\assets\output'
+
+def generate_enhanced_report(results: List[Dict], output_dir: Path):
+    """Generate an enhanced report with parameter analysis"""
+    report_path = output_dir / "batch_analysis_report.md"
     
-    # Run batch analysis
-    batch_analyze_images(input_dir, output_dir)
+    with open(report_path, 'w') as f:
+        f.write("# Background Removal Batch Analysis Report\n\n")
+        f.write(f"Analysis date: {time.strftime('%Y-%m-%d %H:%M:%S')}\n\n")
+        
+        f.write("## Executive Summary\n\n")
+        
+        # Find best methods overall
+        best_quality_result = max(results, key=lambda r: r["quality_score"])
+        fastest_result = min(results, key=lambda r: r["execution_time"])
+        
+        f.write(f"- **Best Quality Method:** {best_quality_result['method']} (Score: {best_quality_result['quality_score']:.3f})\n")
+        f.write(f"- **Fastest Method:** {fastest_result['method']} (Time: {fastest_result['execution_time']:.3f}s)\n\n")
+        
+        # Aggregate results by method type
+        method_types = {}
+        for result in results:
+            method_type = result["method"].split("_")[0]
+            if method_type not in method_types:
+                method_types[method_type] = []
+            method_types[method_type].append(result)
+        
+        # Best configurations by method type
+        f.write("### Best Configurations by Method\n\n")
+        for method_type, method_results in method_types.items():
+            best_result = max(method_results, key=lambda r: r["quality_score"])
+            f.write(f"**{method_type}:**\n")
+            f.write(f"- Parameters: {best_result['parameters']}\n")
+            f.write(f"- Quality Score: {best_result['quality_score']:.3f}\n")
+            f.write(f"- Execution Time: {best_result['execution_time']:.3f}s\n\n")
+        
+        # Parameter analysis
+        f.write("## Parameter Analysis\n\n")
+        
+        # Threshold analysis
+        if "Threshold" in method_types:
+            threshold_results = method_types["Threshold"]
+            f.write("### Threshold Parameter Analysis\n\n")
+            
+            # Group by threshold value
+            threshold_groups = {}
+            for result in threshold_results:
+                threshold = result["parameters"]["threshold"]
+                if threshold not in threshold_groups:
+                    threshold_groups[threshold] = []
+                threshold_groups[threshold].append(result)
+            
+            # Average performance by threshold
+            f.write("#### Effect of Threshold Value\n\n")
+            f.write("| Threshold | Avg Quality | Avg Time (s) |\n")
+            f.write("|-----------|-------------|-------------|\n")
+            
+            for threshold, group in sorted(threshold_groups.items()):
+                avg_quality = sum(r["quality_score"] for r in group) / len(group)
+                avg_time = sum(r["execution_time"] for r in group) / len(group)
+                f.write(f"| {threshold} | {avg_quality:.3f} | {avg_time:.3f} |\n")
+            
+            f.write("\n")
+            
+            # Group by tolerance
+            tolerance_groups = {}
+            for result in threshold_results:
+                tolerance = result["parameters"]["tolerance"]
+                if tolerance not in tolerance_groups:
+                    tolerance_groups[tolerance] = []
+                tolerance_groups[tolerance].append(result)
+            
+            # Average performance by tolerance
+            f.write("#### Effect of Tolerance Value\n\n")
+            f.write("| Tolerance | Avg Quality | Avg Time (s) |\n")
+            f.write("|-----------|-------------|-------------|\n")
+            
+            for tolerance, group in sorted(tolerance_groups.items()):
+                avg_quality = sum(r["quality_score"] for r in group) / len(group)
+                avg_time = sum(r["execution_time"] for r in group) / len(group)
+                f.write(f"| {tolerance} | {avg_quality:.3f} | {avg_time:.3f} |\n")
+            
+            f.write("\n")
+        
+        # Image-specific analysis
+        f.write("## Image-Specific Analysis\n\n")
+        
+        images = set(r["image"] for r in results)
+        for image in sorted(images):
+            image_results = [r for r in results if r["image"] == image]
+            best_result = max(image_results, key=lambda r: r["quality_score"])
+            
+            f.write(f"### {image}\n\n")
+            f.write(f"- **Best Method:** {best_result['method']}\n")
+            f.write(f"- **Quality Score:** {best_result['quality_score']:.3f}\n")
+            f.write(f"- **Execution Time:** {best_result['execution_time']:.3f}s\n")
+            f.write(f"- **Parameters:** {best_result['parameters']}\n\n")
+            
+            # Top 3 methods for this image
+            f.write("#### Top 3 Methods\n\n")
+            f.write("| Method | Quality | Time (s) | Parameters |\n")
+            f.write("|--------|---------|----------|------------|\n")
+            
+            sorted_results = sorted(image_results, key=lambda r: r["quality_score"], reverse=True)[:3]
+            for result in sorted_results:
+                params_str = ", ".join(f"{k}={v}" for k, v in result["parameters"].items())
+                f.write(f"| {result['method']} | {result['quality_score']:.3f} | {result['execution_time']:.3f} | {params_str} |\n")
+            
+            f.write("\n")
+        
+        # Overall results table
+        f.write("## Complete Results\n\n")
+        f.write("| Image | Method | Quality | Time (s) | Parameters |\n")
+        f.write("|-------|--------|---------|----------|------------|\n")
+        
+        # Sort by image name and then by quality score (descending)
+        sorted_results = sorted(results, key=lambda r: (r["image"], -r["quality_score"]))
+        
+        for result in sorted_results:
+            params_str = ", ".join(f"{k}={v}" for k, v in result["parameters"].items())
+            f.write(f"| {result['image']} | {result['method']} | {result['quality_score']:.3f} | {result['execution_time']:.3f} | {params_str} |\n")
+
 
 if __name__ == "__main__":
-    main()
+    args = parse_args()
+    run_batch_analysis(args)

@@ -35,9 +35,11 @@ class HungerRushColors:
         "input_bg": "#FFFFFF",
         "button_color": PRIMARY_TEAL,
         "text_color": PRIMARY_NAVY,
+        "text_secondary": PRIMARY_GRAY,
         "label_color": PRIMARY_NAVY,
         "checkbox_color": PRIMARY_NAVY,
-        "border_color": "#E5E5E5"
+        "border_color": "#E5E5E5",
+        "hover_bg": "#E5F0EE"
     }
     
     # Dark Theme Color Scheme
@@ -47,9 +49,11 @@ class HungerRushColors:
         "input_bg": "#FFFFFF",
         "button_color": "#23A47C",
         "text_color": "#23A47C",
+        "text_secondary": "#A0A4B0",
         "label_color": "#23A47C",
         "checkbox_color": "#FFFFFF",
-        "border_color": "#2A3A4F"
+        "border_color": "#2A3A4F",
+        "hover_bg": "#2C3D52"
     }
 
 class ThemeStyles:
