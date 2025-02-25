@@ -6,7 +6,7 @@ from PySide6.QtWidgets import (
     QMainWindow, QWidget, QLineEdit, QPushButton, QLabel,
     QVBoxLayout, QHBoxLayout, QFrame, QFileDialog, QSpacerItem, QSizePolicy
 )
-from PySide6.QtCore import Qt
+from PySide6.QtCore import Qt, QThread
 from pathlib import Path
 
 from src.services.image_processing_service import ImageProcessingService
@@ -20,7 +20,7 @@ from src.ui.components.file_section import FileSectionWidget
 from src.ui.components.background_removal_option import BackgroundRemovalOption
 from src.ui.components.message_dialogs import show_error, show_info, show_warning, show_confirmation
 from src.ui.components.image_preview import ImagePreview
-
+from src.utils.worker import ImageProcessingWorker
 
 logger = get_logger(__name__)
 
@@ -48,6 +48,8 @@ class MainWindow(QMainWindow):
         # Initialize services and state
         self.processor = ImageProcessingService()
         self.current_file = None
+        self.thread = None
+        self.worker = None
 
         # Set up window properties
         self.setWindowTitle(self.WINDOW_TITLE)
@@ -117,17 +119,31 @@ class MainWindow(QMainWindow):
         self.main_layout.addWidget(self.format_selector, 0)  # No stretch
 
     def _setup_process_button(self):
-        """Set up the process button."""
+        """Set up the process button and cancel button."""
+        # Create both buttons
         self.process_button = QPushButton("Process Images")
         self.process_button.clicked.connect(self._process_images)
         self.process_button.setFixedWidth(160)
         self.process_button.setFixedHeight(32)
-        self.main_layout.addWidget(self.process_button, 0, Qt.AlignHCenter)  # No stretch
+        
+        self.cancel_button = QPushButton("Cancel")
+        self.cancel_button.clicked.connect(self._cancel_processing)
+        self.cancel_button.setFixedWidth(160)
+        self.cancel_button.setFixedHeight(32)
+        self.cancel_button.hide()  # Initially hidden
+        
+        # Create a layout for the buttons
+        buttons_layout = QHBoxLayout()
+        buttons_layout.addWidget(self.process_button, alignment=Qt.AlignCenter)
+        buttons_layout.addWidget(self.cancel_button, alignment=Qt.AlignCenter)
+        
+        self.main_layout.addLayout(buttons_layout)
 
     def _setup_progress_indicator(self):
         """Set up the progress indicator."""
         self.progress_indicator = ProgressIndicator(self.theme_mode)
-        self.progress_indicator.setFixedHeight(20)
+        self.progress_indicator.setFixedHeight(40)  # Increased height for better visibility
+        self.progress_indicator.hide()  # Hide the progress indicator at startup
         self.main_layout.addWidget(self.progress_indicator, 0)  # No stretch
 
     def _apply_theme(self):
@@ -219,20 +235,21 @@ class MainWindow(QMainWindow):
     def _start_processing_progress(self):
         """Prepare the UI for image processing."""
         self.progress_indicator.reset()
-        self.progress_indicator.show_status("", "normal")
-        self.process_button.setEnabled(False)
+        self.progress_indicator.show()  # Show the progress indicator when processing starts
+        self.progress_indicator.show_status("Preparing...", "info")
+        self.process_button.hide()
+        self.cancel_button.show()
 
     def _stop_processing_progress(self):
         """Restore UI state after processing."""
-        self.progress_indicator.update_progress(100, "Completed")
-        self.process_button.setEnabled(True)
+        self.cancel_button.hide()
+        self.process_button.show()
+        # Don't hide the progress indicator immediately to allow the user to see the final status
 
     def _process_images(self):
-        """Process images using the selected formats."""
+        """Process images using the selected formats with a worker thread."""
         try:
-            self._start_processing_progress()
             if not self._validate_inputs():
-                self.process_button.setEnabled(True)
                 return
 
             input_path = Path(self.file_section.input_file_entry.text())
@@ -246,27 +263,59 @@ class MainWindow(QMainWindow):
             logger.info(f"Selected formats: {selected_formats}")
             logger.info(f"Background removal: {remove_background}")
 
-            output_dir.mkdir(parents=True, exist_ok=True)
-            self.progress_indicator.show_status("Preparing to process images...", "info")
-
-            results = []
-            total_formats = len(selected_formats)
-            for i, format_name in enumerate(selected_formats):
-                progress_percent = int((i / total_formats) * 100)
-                self.progress_indicator.update_progress(progress_percent, "Processing", format_name)
-                result = self.processor.process_single_format(input_path, output_dir, format_name, remove_background)
-                results.append(result)
-
-            self._stop_processing_progress()
-            self._handle_processing_results(results)
+            # Prepare the UI
+            self._start_processing_progress()
+            
+            # Create the processing thread
+            self.thread = QThread()
+            self.worker = ImageProcessingWorker(
+                self.processor,
+                input_path,
+                output_dir,
+                selected_formats,
+                remove_background
+            )
+            
+            # Move worker to thread
+            self.worker.moveToThread(self.thread)
+            
+            # Connect signals and slots
+            self.thread.started.connect(self.worker.process)
+            self.worker.signals.finished.connect(self.thread.quit)
+            self.worker.signals.finished.connect(self.worker.deleteLater)
+            self.thread.finished.connect(self.thread.deleteLater)
+            
+            # Connect progress signals
+            self.worker.signals.progress.connect(self.progress_indicator.update_progress)
+            self.worker.signals.status.connect(self.progress_indicator.show_status)
+            self.worker.signals.error.connect(self._handle_processing_error)
+            self.worker.signals.result.connect(self._handle_processing_results)
+            
+            # Connect cleanup
+            self.thread.finished.connect(lambda: self._stop_processing_progress())
+            
+            # Start the thread
+            self.thread.start()
 
         except Exception as e:
             error_msg = f"Processing error: {str(e)}"
             logger.error(error_msg, exc_info=True)
             self.progress_indicator.show_status(error_msg, "error")
-            self.process_button.setEnabled(True)
+            self._stop_processing_progress()
 
-    def _validate_inputs(self) -> bool:
+    def _cancel_processing(self):
+        """Cancel the current processing job."""
+        if hasattr(self, 'worker') and hasattr(self, 'thread') and self.thread.isRunning():
+            self.worker.cancel()
+            self.progress_indicator.show_status("Cancelling...", "warning")
+
+    def _handle_processing_error(self, error_message):
+        """Handle errors from the worker thread."""
+        logger.error(f"Processing error: {error_message}")
+        self.progress_indicator.show_status(f"Error: {error_message}", "error")
+        show_error(self, "Processing Error", error_message)
+
+    def _validate_inputs(self):
         """
         Validate inputs before processing.
 
@@ -274,28 +323,33 @@ class MainWindow(QMainWindow):
             True if all inputs are valid, False otherwise.
         """
         if not self.file_section.input_file_entry.text():
+            self.progress_indicator.show()  # Show the progress indicator for error messages
             self.progress_indicator.show_status("No input file selected!", "error")
             show_error(self, "Input Error", "No input file selected!")
             return False
 
         input_path = Path(self.file_section.input_file_entry.text())
         if not input_path.exists():
+            self.progress_indicator.show()  # Show the progress indicator for error messages
             self.progress_indicator.show_status("Input file does not exist!", "error")
             show_error(self, "File Error", "Input file does not exist!")
             return False
 
         if input_path.suffix.lower() not in BaseImageProcessor.ALLOWED_FORMATS:
             error_msg = f"Invalid file format! Allowed formats: {', '.join(BaseImageProcessor.ALLOWED_FORMATS)}"
+            self.progress_indicator.show()  # Show the progress indicator for error messages
             self.progress_indicator.show_status(error_msg, "error")
             show_error(self, "Format Error", error_msg)
             return False
 
         if not self.file_section.output_dir_entry.text():
+            self.progress_indicator.show()  # Show the progress indicator for error messages
             self.progress_indicator.show_status("No output directory selected!", "error")
             show_error(self, "Output Error", "No output directory selected!")
             return False
 
         if not self.format_selector.get_selected():
+            self.progress_indicator.show()  # Show the progress indicator for error messages
             self.progress_indicator.show_status("No formats selected!", "error")
             show_error(self, "Selection Error", "No formats selected!")
             return False
@@ -323,9 +377,15 @@ class MainWindow(QMainWindow):
 
     def closeEvent(self, event):
         """Handle application closure with confirmation if processing."""
-        if not self.process_button.isEnabled():
+        if hasattr(self, 'thread') and self.thread and self.thread.isRunning():
             # Processing is active, ask for confirmation
-            if show_confirmation(self, "Confirm Exit", "Image processing is active. Are you sure you want to exit?"):
+            if show_confirmation(self, "Confirm Exit", 
+                               "Image processing is active. Are you sure you want to exit?"):
+                # Cancel the worker and wait for the thread to finish
+                if hasattr(self, 'worker') and self.worker:
+                    self.worker.cancel()
+                self.thread.quit()
+                self.thread.wait(2000)  # Wait up to 2 seconds for clean shutdown
                 event.accept()
             else:
                 event.ignore()
