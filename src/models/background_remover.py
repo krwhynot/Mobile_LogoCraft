@@ -1,5 +1,13 @@
 """
 Background removal implementation for the Mobile LogoCraft application.
+Follows the complete background removal pipeline:
+1. Contour Detection (Primary Method)
+2. Thresholding (Secondary Refinement)
+3. Mask Combination
+4. Morphological Operations
+5. Contour Refinement
+6. Final Cleanup
+7. Transparency Application
 """
 import cv2
 import numpy as np
@@ -18,21 +26,30 @@ class RemovalMethod(Enum):
     THRESHOLD = "threshold"
     CHROMA_KEY = "chroma_key"
     GRABCUT = "grabcut"
+    COMBINED = "combined"  # Added combined method that follows the complete pipeline
 
 
 class BackgroundRemover:
     """
     Handles background removal from images using various methods.
     Primary method is Contour Detection for optimal quality with app icons and logos.
+    The COMBINED method follows the complete pipeline recommended in documentation:
+    1. Contour Detection
+    2. Thresholding
+    3. Mask Combination
+    4. Morphological Operations
+    5. Contour Refinement
+    6. Final Cleanup
+    7. Transparency Application
     """
     
-    def __init__(self, method: RemovalMethod = RemovalMethod.CONTOUR_DETECTION):
+    def __init__(self, method: RemovalMethod = RemovalMethod.COMBINED):
         """
         Initialize the background remover with the specified method.
         
         Args:
             method: The method to use for background removal.
-                   Defaults to Contour Detection for optimal results with app icons.
+                   Defaults to COMBINED for optimal results with app icons.
         """
         self.method = method
         logger.info(f"Initialized BackgroundRemover with method: {method.value}")
@@ -40,6 +57,7 @@ class BackgroundRemover:
     def remove_background(self, image: np.ndarray) -> np.ndarray:
         """
         Remove the background from an image using the selected method.
+        This is the main entry point for background removal.
         
         Args:
             image: The input image as a numpy array (BGR format).
@@ -50,7 +68,18 @@ class BackgroundRemover:
         try:
             logger.info(f"Removing background using method: {self.method.value}")
             
-            if self.method == RemovalMethod.CONTOUR_DETECTION:
+            # First detect if the image has a white background
+            has_white_bg = self.detect_white_background(image)
+            
+            # If no white background is detected, return original with alpha
+            if not has_white_bg:
+                logger.info("No white background detected, skipping background removal")
+                return self._add_alpha_channel(image)
+            
+            # Apply the appropriate removal method
+            if self.method == RemovalMethod.COMBINED:
+                return self._remove_with_combined_pipeline(image)
+            elif self.method == RemovalMethod.CONTOUR_DETECTION:
                 return self._remove_with_contour_detection(image)
             elif self.method == RemovalMethod.THRESHOLD:
                 return self._remove_with_threshold(image)
@@ -59,18 +88,218 @@ class BackgroundRemover:
             elif self.method == RemovalMethod.GRABCUT:
                 return self._remove_with_grabcut(image)
             else:
-                # Default to contour detection if an invalid method is specified
-                logger.warning(f"Invalid removal method: {self.method}, defaulting to contour detection")
-                return self._remove_with_contour_detection(image)
+                # Default to combined pipeline if an invalid method is specified
+                logger.warning(f"Invalid removal method: {self.method}, defaulting to combined pipeline")
+                return self._remove_with_combined_pipeline(image)
                 
         except Exception as e:
             logger.error(f"Error removing background: {str(e)}", exc_info=True)
             # Return original image with alpha channel
             return self._add_alpha_channel(image)
     
+    def _remove_with_combined_pipeline(self, image: np.ndarray) -> np.ndarray:
+        """
+        Remove background using the complete pipeline as specified in documentation:
+        1. Contour Detection (Primary Method)
+        2. Thresholding (Secondary Refinement)
+        3. Mask Combination
+        4. Morphological Operations
+        5. Contour Refinement
+        6. Final Cleanup
+        7. Transparency Application
+        
+        Args:
+            image: The input image (BGR format).
+            
+        Returns:
+            Image with transparent background (BGRA format).
+        """
+        logger.info("Applying complete background removal pipeline")
+        
+        # Step 1: Contour Detection (Primary Method)
+        contour_mask = self._contour_detection_method(image)
+        logger.debug("Step 1: Contour Detection completed")
+        
+        # Step 2: Thresholding (Secondary Refinement)
+        threshold_mask = self._threshold_method(image)
+        logger.debug("Step 2: Thresholding completed")
+        
+        # Step 3: Mask Combination
+        combined_mask = self._combine_masks(contour_mask, threshold_mask)
+        logger.debug("Step 3: Mask Combination completed")
+        
+        # Step 4: Morphological Operations
+        morphed_mask = self._apply_morphological_operations(combined_mask)
+        logger.debug("Step 4: Morphological Operations completed")
+        
+        # Step 5: Contour Refinement
+        refined_mask = self._refine_contours(morphed_mask)
+        logger.debug("Step 5: Contour Refinement completed")
+        
+        # Step 6: Final Cleanup
+        cleaned_mask = self._final_cleanup(refined_mask)
+        logger.debug("Step 6: Final Cleanup completed")
+        
+        # Step 7: Transparency Application
+        result = self._apply_transparency(image, cleaned_mask)
+        logger.debug("Step 7: Transparency Application completed")
+        
+        return result
+    
+    def _contour_detection_method(self, image: np.ndarray) -> np.ndarray:
+        """
+        Step 1: Contour Detection method to identify object boundaries.
+        
+        Args:
+            image: The input image (BGR format).
+            
+        Returns:
+            Binary mask with detected objects.
+        """
+        # Convert the image to grayscale to simplify processing
+        gray = cv2.cvtColor(image, cv2.COLOR_BGR2GRAY)
+        
+        # Apply Gaussian blur to reduce noise and small details
+        blurred = cv2.GaussianBlur(gray, (5, 5), 0)
+        
+        # Use Canny edge detection to find edges
+        edges = cv2.Canny(blurred, 30, 150)
+        
+        # Dilate the edges to close small gaps
+        dilated = cv2.dilate(edges, None, iterations=2)
+        
+        # Find contours in the edge map
+        contours, _ = cv2.findContours(dilated, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
+        
+        # Create a mask by filling in the identified contours
+        mask = np.zeros_like(gray)
+        for contour in contours:
+            if cv2.contourArea(contour) > 50:  # Filter small noise contours
+                cv2.drawContours(mask, [contour], -1, 255, -1)
+        
+        return mask
+    
+    def _threshold_method(self, image: np.ndarray) -> np.ndarray:
+        """
+        Step 2: Apply thresholding to separate foreground from background.
+        
+        Args:
+            image: The input image (BGR format).
+            
+        Returns:
+            Binary mask from thresholding.
+        """
+        # Convert to grayscale (if not already done)
+        gray = cv2.cvtColor(image, cv2.COLOR_BGR2GRAY)
+        
+        # Apply Gaussian blur to smooth the image
+        blurred = cv2.GaussianBlur(gray, (5, 5), 0)
+        
+        # Use Otsu's method to automatically determine optimal threshold value
+        _, thresh = cv2.threshold(blurred, 0, 255, cv2.THRESH_BINARY_INV + cv2.THRESH_OTSU)
+        
+        return thresh
+    
+    def _combine_masks(self, mask1: np.ndarray, mask2: np.ndarray) -> np.ndarray:
+        """
+        Step 3: Combine masks from different methods to capture all foreground elements.
+        
+        Args:
+            mask1: First binary mask.
+            mask2: Second binary mask.
+            
+        Returns:
+            Combined binary mask.
+        """
+        # Use bitwise OR to combine the masks
+        # This ensures pixels identified as foreground by either method are preserved
+        return cv2.bitwise_or(mask1, mask2)
+    
+    def _apply_morphological_operations(self, mask: np.ndarray) -> np.ndarray:
+        """
+        Step 4: Apply morphological operations to clean up the mask.
+        
+        Args:
+            mask: Binary mask to process.
+            
+        Returns:
+            Processed binary mask.
+        """
+        # Create a structural element (kernel) for morphological operations
+        kernel = cv2.getStructuringElement(cv2.MORPH_ELLIPSE, (5, 5))
+        
+        # Apply morphological closing (dilation followed by erosion)
+        # This helps connect nearby components and fill small holes
+        closed_mask = cv2.morphologyEx(mask, cv2.MORPH_CLOSE, kernel)
+        
+        return closed_mask
+    
+    def _refine_contours(self, mask: np.ndarray) -> np.ndarray:
+        """
+        Step 5: Further refine the mask by focusing on significant contours.
+        
+        Args:
+            mask: Binary mask to refine.
+            
+        Returns:
+            Refined binary mask.
+        """
+        # Find contours in the combined mask
+        contours, _ = cv2.findContours(mask, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
+        
+        # Create a clean mask with only significant contours
+        refined_mask = np.zeros_like(mask)
+        
+        # Filter out small contours (noise)
+        for contour in contours:
+            if cv2.contourArea(contour) > 100:  # Adjust threshold as needed
+                cv2.drawContours(refined_mask, [contour], 0, 255, -1)
+        
+        return refined_mask
+    
+    def _final_cleanup(self, mask: np.ndarray) -> np.ndarray:
+        """
+        Step 6: Final polish of the mask to ensure a clean result.
+        
+        Args:
+            mask: Binary mask to clean up.
+            
+        Returns:
+            Final cleaned binary mask.
+        """
+        # Apply additional morphological closing for final polish
+        kernel = cv2.getStructuringElement(cv2.MORPH_ELLIPSE, (3, 3))
+        cleaned_mask = cv2.morphologyEx(mask, cv2.MORPH_CLOSE, kernel)
+        
+        # Fill any remaining small holes
+        contours, _ = cv2.findContours(cleaned_mask, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
+        for contour in contours:
+            cv2.drawContours(cleaned_mask, [contour], 0, 255, -1)
+        
+        return cleaned_mask
+    
+    def _apply_transparency(self, image: np.ndarray, mask: np.ndarray) -> np.ndarray:
+        """
+        Step 7: Create a transparent PNG with the background removed.
+        
+        Args:
+            image: Original RGB image.
+            mask: Binary mask representing the foreground.
+            
+        Returns:
+            RGBA image with transparent background.
+        """
+        # Convert the original RGB image to RGBA (with alpha channel)
+        rgba = cv2.cvtColor(image, cv2.COLOR_BGR2BGRA)
+        
+        # Use the refined mask as the alpha channel
+        rgba[:, :, 3] = mask
+        
+        return rgba
+    
     def _remove_with_contour_detection(self, image: np.ndarray) -> np.ndarray:
         """
-        Remove background using contour detection method.
+        Remove background using only contour detection method.
         Optimized for logos and app icons with distinct edges.
         
         Args:
@@ -79,37 +308,15 @@ class BackgroundRemover:
         Returns:
             Image with transparent background (BGRA format).
         """
-        # Convert to grayscale
-        gray = cv2.cvtColor(image, cv2.COLOR_BGR2GRAY)
+        # Get the mask from contour detection
+        mask = self._contour_detection_method(image)
         
-        # Apply Gaussian blur to reduce noise
-        blurred = cv2.GaussianBlur(gray, (5, 5), 0)
-        
-        # Apply threshold to create binary image
-        _, thresh = cv2.threshold(blurred, 240, 255, cv2.THRESH_BINARY_INV)
-        
-        # Find contours in the threshold image
-        contours, _ = cv2.findContours(thresh, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
-        
-        # Create mask with same dimensions as input image
-        mask = np.zeros(gray.shape, dtype=np.uint8)
-        
-        # Draw filled contours on mask
-        cv2.drawContours(mask, contours, -1, 255, -1)
-        
-        # Apply morphological operations to improve mask
+        # Apply basic cleanup
         kernel = np.ones((3, 3), np.uint8)
         mask = cv2.morphologyEx(mask, cv2.MORPH_CLOSE, kernel, iterations=2)
         
         # Create output image with alpha channel
-        height, width = image.shape[:2]
-        result = np.zeros((height, width, 4), dtype=np.uint8)
-        
-        # Copy BGR channels
-        result[:, :, 0:3] = image
-        
-        # Set alpha channel from mask
-        result[:, :, 3] = mask
+        result = self._apply_transparency(image, mask)
         
         return result
     
@@ -124,21 +331,11 @@ class BackgroundRemover:
         Returns:
             Image with transparent background (BGRA format).
         """
-        # Convert to grayscale
-        gray = cv2.cvtColor(image, cv2.COLOR_BGR2GRAY)
-        
-        # Apply threshold
-        _, mask = cv2.threshold(gray, 240, 255, cv2.THRESH_BINARY_INV)
+        # Get the mask from thresholding
+        mask = self._threshold_method(image)
         
         # Create output image with alpha channel
-        height, width = image.shape[:2]
-        result = np.zeros((height, width, 4), dtype=np.uint8)
-        
-        # Copy BGR channels
-        result[:, :, 0:3] = image
-        
-        # Set alpha channel from mask
-        result[:, :, 3] = mask
+        result = self._apply_transparency(image, mask)
         
         return result
     
@@ -169,14 +366,7 @@ class BackgroundRemover:
         mask = cv2.morphologyEx(mask, cv2.MORPH_OPEN, kernel, iterations=1)
         
         # Create output image with alpha channel
-        height, width = image.shape[:2]
-        result = np.zeros((height, width, 4), dtype=np.uint8)
-        
-        # Copy BGR channels
-        result[:, :, 0:3] = image
-        
-        # Set alpha channel from mask
-        result[:, :, 3] = mask
+        result = self._apply_transparency(image, mask)
         
         return result
     
@@ -209,13 +399,7 @@ class BackgroundRemover:
         grabcut_mask = np.where((mask==2)|(mask==0), 0, 255).astype('uint8')
         
         # Create output image with alpha channel
-        result = np.zeros((height, width, 4), dtype=np.uint8)
-        
-        # Copy BGR channels
-        result[:, :, 0:3] = image
-        
-        # Set alpha channel from mask
-        result[:, :, 3] = grabcut_mask
+        result = self._apply_transparency(image, grabcut_mask)
         
         return result
     

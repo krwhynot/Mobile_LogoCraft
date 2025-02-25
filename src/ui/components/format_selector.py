@@ -56,10 +56,6 @@ class FormatSelector(QWidget):
             cb = QCheckBox(f"{format_name.replace('_', ' ')} ({dimensions[0]}×{dimensions[1]} px)")
             cb.setStyleSheet(self._get_checkbox_style())
             
-            # Add tooltip with full description
-            description = config["description"]
-            cb.setToolTip(f"{description}\nDimensions: {dimensions[0]}×{dimensions[1]} px")
-            
             # Calculate grid position (2 columns)
             row, col = divmod(i, 2)
             grid.addWidget(cb, row, col)

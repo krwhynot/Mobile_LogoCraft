@@ -14,10 +14,11 @@ class ImageProcessingService:
 
     def __init__(self):
         """Initialize processors and load format configurations."""
-        self.image_processor = ImageProcessor()
-        self.push_processor = PushProcessor()
-        self.background_remover = BackgroundRemover()
         self.logger = get_logger(__name__)
+        self.background_remover = BackgroundRemover()
+        self.image_processor = ImageProcessor()
+        # Pass the existing background_remover instance to PushProcessor
+        self.push_processor = PushProcessor(background_remover=self.background_remover)
         self.formats = BaseImageProcessor.FORMAT_CONFIGS
 
     def process_batch(self, input_path: Path, output_dir: Path, selected_formats: set, remove_background: bool = False) -> list:
@@ -98,12 +99,14 @@ class ImageProcessingService:
             # For other formats, use the existing background removal logic
             import cv2
             import numpy as np
+            from PIL import Image
             
             # Read the input image
             img = cv2.imread(str(input_path))
             
             # Apply background removal if enabled and format supports transparency
             supports_transparency = format_name in ["LOGO", "LOGO_WIDE", "APPICON"]
+            has_white_bg = False
             
             if remove_background and supports_transparency:
                 # Check if the image has a white background
@@ -117,22 +120,82 @@ class ImageProcessingService:
             if format_name == "LOGO_WIDE":
                 # Use the specialized logo processor method for wide format
                 if remove_background and has_white_bg:
-                    # Save the processed image with alpha channel
-                    cv2.imwrite(str(output_path), img)
+                    # For LOGO_WIDE with background removal, we need to resize it correctly
+                    # Get the format configuration
+                    config = self.formats[format_name]
+                    target_width, target_height = config["size"]
+                    
+                    # Convert OpenCV image to PIL for processing
+                    # Convert from BGRA to RGBA for PIL
+                    if img.shape[2] == 4:  # If has alpha channel
+                        b, g, r, a = cv2.split(img)
+                        img_pil = Image.fromarray(cv2.merge((r, g, b, a)), 'RGBA')
+                    else:
+                        img_pil = Image.fromarray(cv2.cvtColor(img, cv2.COLOR_BGR2RGB))
+                    
+                    # Process the image to the correct dimensions
+                    self.image_processor.process_image(
+                        input_path=None,  # Not used when providing img_pil directly
+                        output_path=output_path,
+                        width=target_width,
+                        height=target_height,
+                        bg_color=config["bg_color"],
+                        img_pil=img_pil
+                    )
                 else:
                     self.image_processor.process_logo(input_path, output_path, wide=True)
             elif format_name == "LOGO":
                 # Use the specialized logo processor method for square format
                 if remove_background and has_white_bg:
-                    # Save the processed image with alpha channel
-                    cv2.imwrite(str(output_path), img)
+                    # For LOGO with background removal, we need to resize it correctly
+                    # Get the format configuration
+                    config = self.formats[format_name]
+                    target_width, target_height = config["size"]
+                    
+                    # Convert OpenCV image to PIL for processing
+                    # Convert from BGRA to RGBA for PIL
+                    if img.shape[2] == 4:  # If has alpha channel
+                        b, g, r, a = cv2.split(img)
+                        img_pil = Image.fromarray(cv2.merge((r, g, b, a)), 'RGBA')
+                    else:
+                        img_pil = Image.fromarray(cv2.cvtColor(img, cv2.COLOR_BGR2RGB))
+                    
+                    # Process the image to the correct dimensions
+                    self.image_processor.process_image(
+                        input_path=None,  # Not used when providing img_pil directly
+                        output_path=output_path,
+                        width=target_width,
+                        height=target_height,
+                        bg_color=config["bg_color"],
+                        img_pil=img_pil
+                    )
                 else:
                     self.image_processor.process_logo(input_path, output_path, wide=False)
             else:
                 # Process all other formats normally
                 if format_name == "APPICON" and remove_background and has_white_bg:
-                    # Save the processed image with alpha channel
-                    cv2.imwrite(str(output_path), img)
+                    # For APPICON with background removal, we need to resize it correctly
+                    # Get the format configuration
+                    config = self.formats[format_name]
+                    target_width, target_height = config["size"]
+                    
+                    # Convert OpenCV image to PIL for processing
+                    # Convert from BGRA to RGBA for PIL
+                    if img.shape[2] == 4:  # If has alpha channel
+                        b, g, r, a = cv2.split(img)
+                        img_pil = Image.fromarray(cv2.merge((r, g, b, a)), 'RGBA')
+                    else:
+                        img_pil = Image.fromarray(cv2.cvtColor(img, cv2.COLOR_BGR2RGB))
+                    
+                    # Process the image to the correct dimensions
+                    self.image_processor.process_image(
+                        input_path=None,  # Not used when providing img_pil directly
+                        output_path=output_path,
+                        width=target_width,
+                        height=target_height,
+                        bg_color=config["bg_color"],
+                        img_pil=img_pil
+                    )
                 else:
                     self.image_processor.process_format(input_path, output_path, format_name)
 

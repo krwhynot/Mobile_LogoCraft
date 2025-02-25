@@ -10,57 +10,49 @@ FORMAT_CONFIGS: Dict[str, Dict[str, Any]] = {
         "size": (1024, 1024),
         "bg_color": (0, 0, 0, 0),  # Transparent
         "quality": 95,
-        "optimize": True,
-        "description": "Application icon with optional transparency"
+        "optimize": True
     },
     "DEFAULT": {
         "size": (1242, 1902),
         "bg_color": (255, 255, 255, 255),  # White background
         "quality": 95,
-        "optimize": True,
-        "description": "Standard splash screen with maintained aspect ratio"
+        "optimize": True
     },
     "DEFAULT_LG": {
         "size": (1242, 2208),
         "bg_color": (255, 255, 255, 255),  # White background
         "quality": 95,
-        "optimize": True,
-        "description": "Large splash screen for higher resolution devices"
+        "optimize": True
     },
     "DEFAULT_XL": {
         "size": (1242, 2688),
         "bg_color": (255, 255, 255, 255),  # White background
         "quality": 95,
-        "optimize": True,
-        "description": "Extra large splash screen for modern devices"
+        "optimize": True
     },
     "FEATURE_GRAPHIC": {
         "size": (1024, 500),
         "bg_color": (255, 255, 255, 255),  # White background
         "quality": 95,
-        "optimize": True,
-        "description": "Feature graphic banner for store listings"
+        "optimize": True
     },
     "LOGO": {
         "size": (1024, 1024),
         "bg_color": (0, 0, 0, 0),  # Transparent
         "quality": 95,
-        "optimize": True,
-        "description": "High-resolution square logo with transparency"
+        "optimize": True
     },
     "LOGO_WIDE": {
         "size": (1024, 500),
         "bg_color": (0, 0, 0, 0),  # Transparent
         "quality": 95,
-        "optimize": True,
-        "description": "High-resolution wide logo with transparency"
+        "optimize": True
     },
     "PUSH": {
         "size": (96, 96),
         "bg_color": (255, 255, 255, 0),  # White with transparency
         "quality": 95,
-        "optimize": True,
-        "description": "Small notification icon (white with transparency)"
+        "optimize": True
     }
 }
 

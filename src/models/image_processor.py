@@ -5,7 +5,7 @@ from PIL import Image
 from pathlib import Path
 import logging
 from .base import BaseImageProcessor
-from typing import Optional, Tuple
+from typing import Optional, Tuple, Union
 
 logger = logging.getLogger(__name__)
 
@@ -61,44 +61,63 @@ class ImageProcessor(BaseImageProcessor):
 
         return new_width, new_height, left_offset, top_offset
 
-    def process_image(self, input_path: Path, output_path: Path, width: int, height: int, bg_color: tuple = (0, 0, 0, 0)):
+    def process_image(self, input_path: Optional[Path], output_path: Path, width: int, height: int, 
+                     bg_color: tuple = (0, 0, 0, 0), img_pil: Optional[Image.Image] = None):
         """
         Process an image to dynamically fit within the target canvas without distortion.
+        
+        Args:
+            input_path: Path to input image, can be None if img_pil is provided
+            output_path: Path where the output image will be saved
+            width: Target width
+            height: Target height
+            bg_color: Background color (RGBA)
+            img_pil: Optional PIL Image object, used instead of loading from input_path
         """
         try:
-            self.validate_input(input_path, output_path)
-
-            with Image.open(input_path) as img:
-                # Validate image dimensions
-                if img.width < self.MIN_DIMENSION or img.height < self.MIN_DIMENSION:
-                    raise ValueError(f"Image too small: {img.width}x{img.height}")
-                if img.width > self.MAX_DIMENSION or img.height > self.MAX_DIMENSION:
-                    raise ValueError(f"Image too large: {img.width}x{img.height}")
-                    
+            if img_pil is None:
+                # Normal path - load image from file
+                self.validate_input(input_path, output_path)
+                img = Image.open(input_path)
+            else:
+                # Use provided PIL image
+                img = img_pil
+                
+            # Validate image dimensions
+            if img.width < self.MIN_DIMENSION or img.height < self.MIN_DIMENSION:
+                raise ValueError(f"Image too small: {img.width}x{img.height}")
+            if img.width > self.MAX_DIMENSION or img.height > self.MAX_DIMENSION:
+                raise ValueError(f"Image too large: {img.width}x{img.height}")
+                
+            if img.mode != PROCESSING_SETTINGS['target_mode']:
                 img = img.convert(PROCESSING_SETTINGS['target_mode'])
 
-                # Get dynamically resized dimensions
-                new_width, new_height, left, top = self.calculate_dimensions(img.size, (width, height))
+            # Get dynamically resized dimensions
+            new_width, new_height, left, top = self.calculate_dimensions(img.size, (width, height))
 
-                # Resize the image dynamically
-                resized = img.resize((new_width, new_height), PROCESSING_SETTINGS['resampling_large'])
+            # Resize the image dynamically
+            resized = img.resize((new_width, new_height), PROCESSING_SETTINGS['resampling_large'])
 
-                # Create a blank canvas with the target size
-                final = Image.new(PROCESSING_SETTINGS['target_mode'], (width, height), bg_color)
+            # Create a blank canvas with the target size
+            final = Image.new(PROCESSING_SETTINGS['target_mode'], (width, height), bg_color)
 
-                # Paste the resized image onto the centered position in the canvas
-                final.paste(resized, (left, top), resized if 'A' in img.getbands() else None)
+            # Paste the resized image onto the centered position in the canvas
+            final.paste(resized, (left, top), resized if 'A' in img.getbands() else None)
 
-                # Save the processed image
-                final.save(
-                    output_path,
-                    SAVE_SETTINGS['format'],
-                    optimize=SAVE_SETTINGS['optimize'],
-                    quality=SAVE_SETTINGS['quality'],
-                    compress_level=SAVE_SETTINGS['compress_level']
-                )
+            # Save the processed image
+            final.save(
+                output_path,
+                SAVE_SETTINGS['format'],
+                optimize=SAVE_SETTINGS['optimize'],
+                quality=SAVE_SETTINGS['quality'],
+                compress_level=SAVE_SETTINGS['compress_level']
+            )
 
-                self.logger.info(f"Successfully processed image to {width}x{height}: {output_path}")
+            self.logger.info(f"Successfully processed image to {width}x{height}: {output_path}")
+            
+            # Close the image if we opened it from a file
+            if img_pil is None:
+                img.close()
 
         except Exception as e:
             self.logger.error(f"Error processing image: {str(e)}")
