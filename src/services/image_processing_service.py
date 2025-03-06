@@ -2,7 +2,10 @@
 Image Processing Service for managing image conversions.
 """
 from pathlib import Path
-import logging
+import cv2
+import numpy as np
+from PIL import Image
+
 from src.models.image_processor import ImageProcessor
 from src.models.push_processor import PushProcessor
 from src.models.base import BaseImageProcessor
@@ -52,7 +55,7 @@ class ImageProcessingService:
             return results
 
         except Exception as e:
-            self.logger.error(f"Batch processing error: {e}")
+            self.logger.error(f"Batch processing error: {e}", exc_info=True)
             raise
     
     def process_single_format(self, input_path: Path, output_dir: Path, format_name: str, remove_background: bool = False) -> dict:
@@ -97,12 +100,10 @@ class ImageProcessingService:
                 }
             
             # For other formats, use the existing background removal logic
-            import cv2
-            import numpy as np
-            from PIL import Image
-            
             # Read the input image
             img = cv2.imread(str(input_path))
+            if img is None:
+                raise ValueError(f"Failed to load image: {input_path}")
             
             # Apply background removal if enabled and format supports transparency
             supports_transparency = format_name in ["LOGO", "LOGO_WIDE", "APPICON"]
@@ -126,12 +127,7 @@ class ImageProcessingService:
                     target_width, target_height = config["size"]
                     
                     # Convert OpenCV image to PIL for processing
-                    # Convert from BGRA to RGBA for PIL
-                    if img.shape[2] == 4:  # If has alpha channel
-                        b, g, r, a = cv2.split(img)
-                        img_pil = Image.fromarray(cv2.merge((r, g, b, a)), 'RGBA')
-                    else:
-                        img_pil = Image.fromarray(cv2.cvtColor(img, cv2.COLOR_BGR2RGB))
+                    img_pil = self._convert_cv_to_pil(img)
                     
                     # Process the image to the correct dimensions
                     self.image_processor.process_image(
@@ -153,12 +149,7 @@ class ImageProcessingService:
                     target_width, target_height = config["size"]
                     
                     # Convert OpenCV image to PIL for processing
-                    # Convert from BGRA to RGBA for PIL
-                    if img.shape[2] == 4:  # If has alpha channel
-                        b, g, r, a = cv2.split(img)
-                        img_pil = Image.fromarray(cv2.merge((r, g, b, a)), 'RGBA')
-                    else:
-                        img_pil = Image.fromarray(cv2.cvtColor(img, cv2.COLOR_BGR2RGB))
+                    img_pil = self._convert_cv_to_pil(img)
                     
                     # Process the image to the correct dimensions
                     self.image_processor.process_image(
@@ -180,12 +171,7 @@ class ImageProcessingService:
                     target_width, target_height = config["size"]
                     
                     # Convert OpenCV image to PIL for processing
-                    # Convert from BGRA to RGBA for PIL
-                    if img.shape[2] == 4:  # If has alpha channel
-                        b, g, r, a = cv2.split(img)
-                        img_pil = Image.fromarray(cv2.merge((r, g, b, a)), 'RGBA')
-                    else:
-                        img_pil = Image.fromarray(cv2.cvtColor(img, cv2.COLOR_BGR2RGB))
+                    img_pil = self._convert_cv_to_pil(img)
                     
                     # Process the image to the correct dimensions
                     self.image_processor.process_image(
@@ -208,12 +194,33 @@ class ImageProcessingService:
             }
 
         except Exception as e:
-            self.logger.error(f"Error processing {format_name}: {e}")
+            self.logger.error(f"Error processing {format_name}: {e}", exc_info=True)
             return {
                 "format": format_name,
                 "status": "failed",
                 "error": str(e)
             }
+
+    def _convert_cv_to_pil(self, img: np.ndarray) -> Image.Image:
+        """
+        Convert OpenCV image to PIL Image.
+        
+        Args:
+            img: OpenCV image (BGR or BGRA format)
+            
+        Returns:
+            PIL Image (RGB or RGBA format)
+        """
+        try:
+            if img.shape[2] == 4:  # If has alpha channel
+                b, g, r, a = cv2.split(img)
+                return Image.fromarray(cv2.merge((r, g, b, a)), 'RGBA')
+            else:
+                return Image.fromarray(cv2.cvtColor(img, cv2.COLOR_BGR2RGB))
+        except Exception as e:
+            self.logger.error(f"Error converting CV to PIL: {e}", exc_info=True)
+            # Fallback to RGB conversion
+            return Image.fromarray(cv2.cvtColor(img, cv2.COLOR_BGR2RGB))
 
     def _log_batch_results(self, results: list) -> None:
         """Log the results of batch processing."""

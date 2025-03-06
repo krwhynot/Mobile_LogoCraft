@@ -9,11 +9,12 @@ Follows the complete background removal pipeline:
 6. Final Cleanup
 7. Transparency Application
 """
+from enum import Enum
+from typing import Optional
+from pathlib import Path
+
 import cv2
 import numpy as np
-from enum import Enum
-from typing import Tuple, Optional
-from pathlib import Path
 
 from src.utils.logging import get_logger
 
@@ -116,35 +117,39 @@ class BackgroundRemover:
         """
         logger.info("Applying complete background removal pipeline")
         
-        # Step 1: Contour Detection (Primary Method)
-        contour_mask = self._contour_detection_method(image)
-        logger.debug("Step 1: Contour Detection completed")
-        
-        # Step 2: Thresholding (Secondary Refinement)
-        threshold_mask = self._threshold_method(image)
-        logger.debug("Step 2: Thresholding completed")
-        
-        # Step 3: Mask Combination
-        combined_mask = self._combine_masks(contour_mask, threshold_mask)
-        logger.debug("Step 3: Mask Combination completed")
-        
-        # Step 4: Morphological Operations
-        morphed_mask = self._apply_morphological_operations(combined_mask)
-        logger.debug("Step 4: Morphological Operations completed")
-        
-        # Step 5: Contour Refinement
-        refined_mask = self._refine_contours(morphed_mask)
-        logger.debug("Step 5: Contour Refinement completed")
-        
-        # Step 6: Final Cleanup
-        cleaned_mask = self._final_cleanup(refined_mask)
-        logger.debug("Step 6: Final Cleanup completed")
-        
-        # Step 7: Transparency Application
-        result = self._apply_transparency(image, cleaned_mask)
-        logger.debug("Step 7: Transparency Application completed")
-        
-        return result
+        try:
+            # Step 1: Contour Detection (Primary Method)
+            contour_mask = self._contour_detection_method(image)
+            logger.info("Step 1: Contour Detection completed")
+            
+            # Step 2: Thresholding (Secondary Refinement)
+            threshold_mask = self._threshold_method(image)
+            logger.info("Step 2: Thresholding completed")
+            
+            # Step 3: Mask Combination
+            combined_mask = self._combine_masks(contour_mask, threshold_mask)
+            logger.info("Step 3: Mask Combination completed")
+            
+            # Step 4: Morphological Operations
+            morphed_mask = self._apply_morphological_operations(combined_mask)
+            logger.info("Step 4: Morphological Operations completed")
+            
+            # Step 5: Contour Refinement
+            refined_mask = self._refine_contours(morphed_mask)
+            logger.info("Step 5: Contour Refinement completed")
+            
+            # Step 6: Final Cleanup
+            cleaned_mask = self._final_cleanup(refined_mask)
+            logger.info("Step 6: Final Cleanup completed")
+            
+            # Step 7: Transparency Application
+            result = self._apply_transparency(image, cleaned_mask)
+            logger.info("Step 7: Transparency Application completed")
+            
+            return result
+        except Exception as e:
+            logger.error(f"Error in combined pipeline: {str(e)}", exc_info=True)
+            return self._add_alpha_channel(image)
     
     def _contour_detection_method(self, image: np.ndarray) -> np.ndarray:
         """
@@ -308,17 +313,21 @@ class BackgroundRemover:
         Returns:
             Image with transparent background (BGRA format).
         """
-        # Get the mask from contour detection
-        mask = self._contour_detection_method(image)
-        
-        # Apply basic cleanup
-        kernel = np.ones((3, 3), np.uint8)
-        mask = cv2.morphologyEx(mask, cv2.MORPH_CLOSE, kernel, iterations=2)
-        
-        # Create output image with alpha channel
-        result = self._apply_transparency(image, mask)
-        
-        return result
+        try:
+            # Get the mask from contour detection
+            mask = self._contour_detection_method(image)
+            
+            # Apply basic cleanup
+            kernel = np.ones((3, 3), np.uint8)
+            mask = cv2.morphologyEx(mask, cv2.MORPH_CLOSE, kernel, iterations=2)
+            
+            # Create output image with alpha channel
+            result = self._apply_transparency(image, mask)
+            
+            return result
+        except Exception as e:
+            logger.error(f"Error in contour detection method: {str(e)}", exc_info=True)
+            return self._add_alpha_channel(image)
     
     def _remove_with_threshold(self, image: np.ndarray) -> np.ndarray:
         """
@@ -331,13 +340,17 @@ class BackgroundRemover:
         Returns:
             Image with transparent background (BGRA format).
         """
-        # Get the mask from thresholding
-        mask = self._threshold_method(image)
-        
-        # Create output image with alpha channel
-        result = self._apply_transparency(image, mask)
-        
-        return result
+        try:
+            # Get the mask from thresholding
+            mask = self._threshold_method(image)
+            
+            # Create output image with alpha channel
+            result = self._apply_transparency(image, mask)
+            
+            return result
+        except Exception as e:
+            logger.error(f"Error in threshold method: {str(e)}", exc_info=True)
+            return self._add_alpha_channel(image)
     
     def _remove_with_chroma_key(self, image: np.ndarray) -> np.ndarray:
         """
@@ -350,25 +363,29 @@ class BackgroundRemover:
         Returns:
             Image with transparent background (BGRA format).
         """
-        # Convert to HSV for better color segmentation
-        hsv = cv2.cvtColor(image, cv2.COLOR_BGR2HSV)
-        
-        # Define white color range in HSV
-        lower_white = np.array([0, 0, 200])
-        upper_white = np.array([180, 30, 255])
-        
-        # Create mask
-        mask = cv2.inRange(hsv, lower_white, upper_white)
-        mask = cv2.bitwise_not(mask)
-        
-        # Apply morphological operations
-        kernel = np.ones((3, 3), np.uint8)
-        mask = cv2.morphologyEx(mask, cv2.MORPH_OPEN, kernel, iterations=1)
-        
-        # Create output image with alpha channel
-        result = self._apply_transparency(image, mask)
-        
-        return result
+        try:
+            # Convert to HSV for better color segmentation
+            hsv = cv2.cvtColor(image, cv2.COLOR_BGR2HSV)
+            
+            # Define white color range in HSV
+            lower_white = np.array([0, 0, 200])
+            upper_white = np.array([180, 30, 255])
+            
+            # Create mask
+            mask = cv2.inRange(hsv, lower_white, upper_white)
+            mask = cv2.bitwise_not(mask)
+            
+            # Apply morphological operations
+            kernel = np.ones((3, 3), np.uint8)
+            mask = cv2.morphologyEx(mask, cv2.MORPH_OPEN, kernel, iterations=1)
+            
+            # Create output image with alpha channel
+            result = self._apply_transparency(image, mask)
+            
+            return result
+        except Exception as e:
+            logger.error(f"Error in chroma key method: {str(e)}", exc_info=True)
+            return self._add_alpha_channel(image)
     
     def _remove_with_grabcut(self, image: np.ndarray) -> np.ndarray:
         """
@@ -381,37 +398,50 @@ class BackgroundRemover:
         Returns:
             Image with transparent background (BGRA format).
         """
-        # Create initial mask
-        mask = np.zeros(image.shape[:2], np.uint8)
-        
-        # Set rectangular region for foreground
-        height, width = image.shape[:2]
-        rect = (10, 10, width-20, height-20)
-        
-        # Create background/foreground model
-        bgd_model = np.zeros((1, 65), np.float64)
-        fgd_model = np.zeros((1, 65), np.float64)
-        
-        # Apply GrabCut
-        cv2.grabCut(image, mask, rect, bgd_model, fgd_model, 5, cv2.GC_INIT_WITH_RECT)
-        
-        # Convert mask for display
-        grabcut_mask = np.where((mask==2)|(mask==0), 0, 255).astype('uint8')
-        
-        # Create output image with alpha channel
-        result = self._apply_transparency(image, grabcut_mask)
-        
-        return result
+        try:
+            # Create initial mask
+            mask = np.zeros(image.shape[:2], np.uint8)
+            
+            # Set rectangular region for foreground
+            height, width = image.shape[:2]
+            rect = (10, 10, width-20, height-20)
+            
+            # Create background/foreground model
+            bgd_model = np.zeros((1, 65), np.float64)
+            fgd_model = np.zeros((1, 65), np.float64)
+            
+            # Apply GrabCut
+            cv2.grabCut(image, mask, rect, bgd_model, fgd_model, 5, cv2.GC_INIT_WITH_RECT)
+            
+            # Convert mask for display
+            grabcut_mask = np.where((mask==2)|(mask==0), 0, 255).astype('uint8')
+            
+            # Create output image with alpha channel
+            result = self._apply_transparency(image, grabcut_mask)
+            
+            return result
+        except Exception as e:
+            logger.error(f"Error in GrabCut method: {str(e)}", exc_info=True)
+            return self._add_alpha_channel(image)
     
     def _add_alpha_channel(self, image: np.ndarray) -> np.ndarray:
         """Add an alpha channel to an image without transparency."""
-        if image.shape[2] == 3:  # BGR image
+        try:
+            if image.shape[2] == 3:  # BGR image
+                height, width = image.shape[:2]
+                result = np.zeros((height, width, 4), dtype=np.uint8)
+                result[:, :, 0:3] = image
+                result[:, :, 3] = 255  # Fully opaque
+                return result
+            return image  # Already has alpha channel
+        except Exception as e:
+            logger.error(f"Error adding alpha channel: {str(e)}", exc_info=True)
+            # Create a simple BGRA image if all else fails
             height, width = image.shape[:2]
             result = np.zeros((height, width, 4), dtype=np.uint8)
-            result[:, :, 0:3] = image
-            result[:, :, 3] = 255  # Fully opaque
+            result[:, :, 0:3] = image if image.shape[2] == 3 else image[:, :, 0:3]
+            result[:, :, 3] = 255
             return result
-        return image  # Already has alpha channel
     
     @staticmethod
     def convert_to_white_icon(image: np.ndarray) -> np.ndarray:
@@ -424,16 +454,20 @@ class BackgroundRemover:
         Returns:
             White icon with transparency (BGRA format).
         """
-        # Create a copy to avoid modifying the original
-        result = image.copy()
-        
-        # Get the alpha channel
-        alpha = result[:, :, 3]
-        
-        # Set all pixels to white where alpha is non-zero
-        result[:, :, 0:3][alpha > 0] = [255, 255, 255]
-        
-        return result
+        try:
+            # Create a copy to avoid modifying the original
+            result = image.copy()
+            
+            # Get the alpha channel
+            alpha = result[:, :, 3]
+            
+            # Set all pixels to white where alpha is non-zero
+            result[:, :, 0:3][alpha > 0] = [255, 255, 255]
+            
+            return result
+        except Exception as e:
+            logger.error(f"Error converting to white icon: {str(e)}", exc_info=True)
+            return image
     
     @staticmethod
     def detect_white_background(image: np.ndarray, threshold: int = 240, coverage: float = 0.9) -> bool:
@@ -448,23 +482,27 @@ class BackgroundRemover:
         Returns:
             True if the image has a white background, False otherwise.
         """
-        # Convert to grayscale if needed
-        if len(image.shape) == 3:
-            gray = cv2.cvtColor(image, cv2.COLOR_BGR2GRAY)
-        else:
-            gray = image
-        
-        # Calculate percentage of white pixels in the image border
-        h, w = gray.shape
-        border_pixels = np.concatenate([
-            gray[0, :],      # top row
-            gray[-1, :],     # bottom row
-            gray[1:-1, 0],   # left column (excluding corners)
-            gray[1:-1, -1]   # right column (excluding corners)
-        ])
-        
-        white_pixels = np.sum(border_pixels >= threshold)
-        white_percentage = white_pixels / len(border_pixels)
-        
-        logger.debug(f"White background detection: {white_percentage:.2f} (threshold: {coverage})")
-        return white_percentage >= coverage
+        try:
+            # Convert to grayscale if needed
+            if len(image.shape) == 3:
+                gray = cv2.cvtColor(image, cv2.COLOR_BGR2GRAY)
+            else:
+                gray = image
+            
+            # Calculate percentage of white pixels in the image border
+            h, w = gray.shape
+            border_pixels = np.concatenate([
+                gray[0, :],      # top row
+                gray[-1, :],     # bottom row
+                gray[1:-1, 0],   # left column (excluding corners)
+                gray[1:-1, -1]   # right column (excluding corners)
+            ])
+            
+            white_pixels = np.sum(border_pixels >= threshold)
+            white_percentage = white_pixels / len(border_pixels)
+            
+            logger.info(f"White background detection: {white_percentage:.2f} (threshold: {coverage})")
+            return white_percentage >= coverage
+        except Exception as e:
+            logger.error(f"Error detecting white background: {str(e)}", exc_info=True)
+            return False  # Default to no white background if detection fails

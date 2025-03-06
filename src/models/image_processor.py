@@ -3,11 +3,8 @@ Image processing functionality for the HungerRush Image Processor.
 """
 from PIL import Image
 from pathlib import Path
-import logging
 from .base import BaseImageProcessor
 from typing import Optional, Tuple, Union
-
-logger = logging.getLogger(__name__)
 
 # Processing Settings
 PROCESSING_SETTINGS = {
@@ -29,9 +26,10 @@ SAVE_SETTINGS = {
 class ImageProcessor(BaseImageProcessor):
     """Handles image processing operations."""
 
-    def __init__(self, logger: Optional[logging.Logger] = None):
+    def __init__(self, logger=None):
         super().__init__()
-        self.logger = logger or logging.getLogger(__name__)
+        # We ignore the logger parameter but keep it for API compatibility
+        self.logger = None
 
     def calculate_dimensions(self, img_size: Tuple[int, int], target_size: Tuple[int, int]) -> Tuple[int, int, int, int]:
         """
@@ -112,16 +110,13 @@ class ImageProcessor(BaseImageProcessor):
                 quality=SAVE_SETTINGS['quality'],
                 compress_level=SAVE_SETTINGS['compress_level']
             )
-
-            self.logger.info(f"Successfully processed image to {width}x{height}: {output_path}")
             
             # Close the image if we opened it from a file
             if img_pil is None:
                 img.close()
 
         except Exception as e:
-            self.logger.error(f"Error processing image: {str(e)}")
-            raise  # Ensures the error is properly logged and re-raised
+            raise  # Just re-raise the error without logging
 
     def process_format(self, input_path: Path, output_path: Path, format_name: str):
         """Process an image according to a predefined format."""
@@ -137,11 +132,8 @@ class ImageProcessor(BaseImageProcessor):
                 bg_color=config["bg_color"]
             )
 
-            self.logger.info(f"Successfully processed image to format {format_name}: {output_path}")
-
         except Exception as e:
-            self.logger.error(f"Error processing format {format_name}: {str(e)}")
-            raise
+            raise  # Just re-raise the error without logging
 
     def process_logo(self, input_path: Path, output_path: Path, wide: bool = False):
         """
@@ -153,7 +145,6 @@ class ImageProcessor(BaseImageProcessor):
             wide: If True, process as LOGO_WIDE, otherwise as LOGO
         """
         format_name = 'LOGO_WIDE' if wide else 'LOGO'
-        self.logger.info(f"Processing logo as format: {format_name}")
         
         try:
             config = self.get_format_config(format_name)
@@ -166,8 +157,5 @@ class ImageProcessor(BaseImageProcessor):
                 bg_color=config["bg_color"]
             )
             
-            self.logger.info(f"Successfully processed {format_name}: {output_path}")
-            
         except Exception as e:
-            self.logger.error(f"Error processing {format_name}: {str(e)}")
-            raise
+            raise  # Just re-raise the error without logging
